@@ -7,7 +7,6 @@
 	<url>http://dev.bukkit.org/bukkit-plugins/grief-prevention/</url>
 
     <properties>
-        <depend-dir>C:\dependencies</depend-dir>
         <!-- Versions of dependencies, just update the version numbers here -->
         <mc-ver>1.6.2</mc-ver>
         <bukkit-ver>R0.1</bukkit-ver>
@@ -25,33 +24,9 @@
             <id>vault-repo</id>
             <url>http://maven.sk89q.com/repo/</url>
         </repository>
-
-        <repository>
-            <id>OnARandomBox</id> <!-- Multiverse-Core -->
-            <url>http://repo.onarandombox.com/content/repositories/multiverse</url>
-        </repository>
     </repositories>
     
     <dependencies>
-        <!-- Unmanaged Dependencies -->
-        <dependency>
-            <groupId>com.bergerkiller.bukkit.mw</groupId>
-            <artifactId>MyWorlds</artifactId>
-            <systemPath>${depend-dir}\MyWorlds-1.66.jar</systemPath>
-            <version>1.66</version>
-            <scope>system</scope>
-            <optional>true</optional>
-        </dependency>
-
-        <dependency>
-            <groupId>com.frdfsnlght.transporter</groupId>
-            <artifactId>Transporter</artifactId>
-            <systemPath>${depend-dir}\Transporter.jar</systemPath>
-            <version>8.14</version>
-            <scope>system</scope>
-            <optional>true</optional>
-        </dependency>
-
         <!-- Managed Dependencies -->
         <dependency>
             <groupId>org.bukkit</groupId>
@@ -65,14 +40,6 @@
             <groupId>net.milkbowl.vault</groupId>
             <artifactId>Vault</artifactId>
             <version>${vault-ver}</version>
-            <scope>provided</scope>
-            <optional>true</optional>
-        </dependency>
-        
-        <dependency>
-            <groupId>com.onarandombox</groupId>
-            <artifactId>MultiverseCore</artifactId>
-            <version>${mv-ver}</version>
             <scope>provided</scope>
             <optional>true</optional>
         </dependency>
