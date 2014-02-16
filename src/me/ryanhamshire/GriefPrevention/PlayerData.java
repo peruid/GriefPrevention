@@ -26,6 +26,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Vector;
+import java.util.concurrent.BlockingDeque;
+import java.util.concurrent.LinkedBlockingDeque;
 
 import me.ryanhamshire.GriefPrevention.Configuration.WorldConfig;
 import me.ryanhamshire.GriefPrevention.visualization.Visualization;
@@ -63,6 +65,7 @@ public class PlayerData {
 
 	// how many claim blocks the player has earned via play time
 	public int accruedClaimBlocks = GriefPrevention.instance.config_claims_initialBlocks;
+    public boolean ClearInventoryOnJoin= false;
 
 	// visualization
 	public List<Visualization> ActiveVisualizations = new ArrayList<Visualization>();
@@ -167,7 +170,6 @@ public class PlayerData {
 
 	public String lastMessage = ""; // the player's last chat message, or slash
 
-	// command complete with parameters
 	public Date lastMessageTimestamp = new Date(); // last time the player sent
 
 	public String lastPvpPlayer = "";
@@ -272,7 +274,6 @@ public class PlayerData {
 			Claim claim = this.claims.get(i);
 			remainingBlocks -= claim.getArea();
 		}
-
 		// add any blocks this player might have based on group membership
 		// (permissions)
 		remainingBlocks += GriefPrevention.instance.dataStore.getGroupBonusBlocks(this.playerName);

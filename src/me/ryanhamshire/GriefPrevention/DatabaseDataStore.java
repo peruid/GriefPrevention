@@ -150,6 +150,7 @@ public class DatabaseDataStore extends DataStore {
 				playerData.lastLogin = results.getTimestamp("lastlogin");
 				playerData.accruedClaimBlocks = results.getInt("accruedblocks");
 				playerData.bonusClaimBlocks = results.getInt("bonusblocks");
+                playerData.ClearInventoryOnJoin = results.getBoolean("clearonjoin");
 			}
 		} catch (SQLException e) {
 			GriefPrevention.AddLogEntry("Unable to retrieve data for player " + playerName + ".  Details:");
@@ -185,15 +186,17 @@ public class DatabaseDataStore extends DataStore {
 	void initialize(ConfigurationSection Source, ConfigurationSection Target) throws Exception {
 
 		// "jdbc:mysql://<hostname>/database"
-		String FormatString = "jdbc:mysql://%s/%s";
+		String FormatString = "jdbc:mysql://%s:%s/%s";
 
 
 
 			String grabhost = Source.getString("Host", "localhost");
+            String grabport = Source.getString("Port","3306");
 			String grabdbname = Source.getString("Database", "GriefPrevention");
 
-			databaseUrl = String.format(FormatString, grabhost, grabdbname);
+			databaseUrl = String.format(FormatString, grabhost,grabport, grabdbname);
 			Target.set("Host", grabhost);
+            Target.set("Port",grabport);
 			Target.set("Database", grabdbname);
 
 
@@ -245,7 +248,11 @@ public class DatabaseDataStore extends DataStore {
 
 				statement.execute("CREATE TABLE IF NOT EXISTS griefprevention_playerdata (name VARCHAR(50), lastlogin DATETIME, accruedblocks INT(15), bonusblocks INT(15));");
 
-				ResultSet tempresult = statement.executeQuery("SHOW COLUMNS FROM griefprevention_claimdata LIKE 'neverdelete';");
+                ResultSet tempresult = statement.executeQuery("SHOW COLUMNS FROM griefprevention_playerdata LIKE 'clearonjoin';");
+                if(!tempresult.next()){
+                    statement.execute("ALTER TABLE griefprevention_playerdata ADD clearonjoin BOOLEAN NOT NULL DEFAULT 0;");
+                }
+				tempresult = statement.executeQuery("SHOW COLUMNS FROM griefprevention_claimdata LIKE 'neverdelete';");
 				if (!tempresult.next()) {
 					statement.execute("ALTER TABLE griefprevention_claimdata ADD neverdelete BOOLEAN NOT NULL DEFAULT 0;");
 				}
@@ -337,10 +344,27 @@ public class DatabaseDataStore extends DataStore {
 
 			SimpleDateFormat sqlFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 			String dateString = sqlFormat.format(playerData.lastLogin);
+            String Existsquery = "SELECT true from griefprevention_playerdata WHERE name='%1$s'";
+            String UpdateFormat = "UPDATE griefprevention_playerdata SET name='%1$s',lastlogin='%2$s',accruedblocks='%3$s',bonusblocks='%4$s',clearonjoin='%5$s' WHERE name='%1$s'";
+            String insertFormat =
+                    "INSERT INTO griefprevention_playerdata ('name','lastlogin','accruedblocks','bonusblocks','clearonjoin')  VALUES " +
+                            "('%1$s', '%2$s', '%3$s','%4$s','%5$s');";
 
-			Statement statement = databaseConnection.createStatement();
-			statement.execute("DELETE FROM griefprevention_playerdata WHERE name='" + playerName + "';");
-			statement.execute("INSERT INTO griefprevention_playerdata VALUES ('" + playerName + "', '" + dateString + "', " + playerData.accruedClaimBlocks + ", " + playerData.bonusClaimBlocks + ");");
+            Statement statement = databaseConnection.createStatement();
+			//statement.execute("DELETE FROM griefprevention_playerdata WHERE name='" + playerName + "';");
+            String buildexists = String.format(Existsquery,playerName);
+            String useSaveQuery = null;
+            ResultSet rs = statement.executeQuery(buildexists);
+            if(rs.next()){
+                useSaveQuery = String.format(UpdateFormat,playerName,dateString,playerData.accruedClaimBlocks,playerData.bonusClaimBlocks,playerData.ClearInventoryOnJoin?1:0);
+            }
+            else {
+                useSaveQuery = String.format(insertFormat,playerName,dateString,playerData.accruedClaimBlocks,playerData.bonusClaimBlocks,playerData.ClearInventoryOnJoin?1:0);
+            }
+
+             statement.execute(useSaveQuery);
+
+
 		} catch (SQLException e) {
 			GriefPrevention.AddLogEntry("Unable to save data for player " + playerName + ".  Details:");
 			e.printStackTrace();
@@ -375,12 +399,14 @@ public class DatabaseDataStore extends DataStore {
 		try {
             Debugger.Write("Database:Loading claims in world:" + loading.getName(),DebugLevel.Verbose);
 			Statement statement = databaseConnection.createStatement();
-			ResultSet results = statement.executeQuery("SELECT * FROM griefprevention_claimdata where lessercorner LIKE \"" + loading.getName() + ";%\";");
+
+            ResultSet results = statement.executeQuery("SELECT * FROM griefprevention_claimdata where parentid=-1 AND lessercorner LIKE \"" + loading.getName() + ";%\";");
 			ArrayList<Claim> claimsToRemove = new ArrayList<Claim>();
 
 			while (results.next()) {
 				try {
 					// skip subdivisions
+
 					long parentId = results.getLong("parentid");
 					if (parentId != -1)
 						continue;
@@ -430,9 +456,11 @@ public class DatabaseDataStore extends DataStore {
 
 					// look for any subdivisions for this claim
 					Statement statement2 = this.databaseConnection.createStatement();
+
 					ResultSet childResults = statement2.executeQuery("SELECT * FROM griefprevention_claimdata WHERE parentid=" + topLevelClaim.id + ";");
 
 					while (childResults.next()) {
+
 						lesserCornerString = childResults.getString("lessercorner");
 						lesserBoundaryCorner = this.locationFromString(lesserCornerString);
 						Long subid = childResults.getLong("id");
@@ -453,13 +481,13 @@ public class DatabaseDataStore extends DataStore {
 
 						neverdelete = results.getBoolean("neverdelete");
 
-						Claim childClaim = new Claim(lesserBoundaryCorner, greaterBoundaryCorner, ownerName, builderNames, containerNames, accessorNames, managerNames, null, neverdelete);
+						Claim childClaim = new Claim(lesserBoundaryCorner, greaterBoundaryCorner, ownerName, builderNames, containerNames, accessorNames, managerNames, subid, neverdelete);
 
 						// add this claim to the list of children of the current
 						// top level claim
 						childClaim.parent = topLevelClaim;
 						topLevelClaim.children.add(childClaim);
-						childClaim.subClaimid = subid;
+
 						childClaim.inDataStore = true;
 					}
 				} catch (SQLException e) {
@@ -522,12 +550,10 @@ public class DatabaseDataStore extends DataStore {
 			parentId = -1;
 		} else {
 			parentId = claim.parent.id;
-
-			id = claim.getSubClaimID() != null ? claim.getSubClaimID() : claim.parent.children.indexOf(claim);
 		}
 
 		if (claim.id == null) {
-			id = claim.getSubClaimID() != null ? claim.getSubClaimID() : -1;
+			claim.id = id = getNextClaimID();
 		} else {
 			id = claim.id;
 		}

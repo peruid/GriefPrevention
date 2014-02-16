@@ -18,12 +18,8 @@
 
 package me.ryanhamshire.GriefPrevention;
 
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
-import java.io.IOException;
+import java.io.*;
+import java.nio.channels.FileChannel;
 import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -150,20 +146,112 @@ public class FlatFileDataStore extends DataStore {
 			return "";
 		}
 	}
+    public static void copyFile(File sourceFile, File destFile) throws IOException {
+        Debugger.Write("Copying File:" + sourceFile.toString() + " To " + destFile.toString(), Debugger.DebugLevel.Verbose);
+        BufferedInputStream bsin = new BufferedInputStream(new FileInputStream(sourceFile));
+        BufferedOutputStream bsout = new BufferedOutputStream(new FileOutputStream(destFile));
+        int chunksize = 16*1024;
+        int readamount=0;
+        byte[] buffer = new byte[chunksize];
+        try {
+            //write in chunks of chunksize.
+            while((readamount=bsin.read(buffer,0,chunksize))==chunksize){
+                bsout.write(buffer,0,chunksize);
+            }
+            //write out the remainder.
+            bsout.write(buffer,0,readamount);
+
+        }
+        catch(Exception exx){
+            exx.printStackTrace();
+        }
+        finally {
+            bsin.close();
+            bsout.close();
+        }
+    }
+
 
 	private String getPlayerDataFile(String sPlayerName) {
-		return playerDataFolderPath + File.separator + sPlayerName;
+        String retval=null;
+        try {
+
+
+        String strPath = playerDataFolderPath + File.separator;
+
+        String scaseSensitive = strPath + sPlayerName;
+        String scaseInsensitive = strPath +sPlayerName.toLowerCase();
+
+        File examinepath = new File(strPath);
+
+        File CaseSensitive = null;
+        File CaseInsensitive=null;
+
+        //search for file.
+        for(File iterate:examinepath.listFiles()){
+            //if it equals the name case-sensitively,
+
+            if(iterate.getName().equals(sPlayerName)){
+                //assign our case sensitive name
+
+                CaseSensitive=iterate;
+            }
+            else if(iterate.getName().equalsIgnoreCase(sPlayerName)
+                    && iterate.getName().toLowerCase().equals(iterate.getName())){
+                //otherwise assign our case insensitive name.
+
+                CaseInsensitive = iterate;
+                scaseInsensitive = CaseInsensitive.getName();
+            }
+        }
+
+
+        if(CaseSensitive!=null && CaseInsensitive!=null &&  !scaseInsensitive.equals(scaseSensitive)){
+            try {
+
+                //delete caseinsensitive file...
+                new File(scaseInsensitive).delete();
+                //copy case sensitive version in it's place.
+
+           copyFile(CaseSensitive, CaseInsensitive);
+               //CaseInsensitive.renameTo(new File(scaseInsensitive + "-backup"));
+                //delete the case sensitive file.
+
+                CaseSensitive.delete();
+
+            }
+            catch(IOException iox){
+                //ignore
+            }
+        }
+        return retval=scaseInsensitive;
+
+
+        }
+        finally {
+            Debugger.Write("Flat: Player Data retrieved for " + sPlayerName + ":" + retval, Debugger.DebugLevel.Verbose ) ;
+        }
 	}
 
 	@Override
 	synchronized PlayerData getPlayerDataFromStorage(String playerName) {
-		File playerFile = new File(getPlayerDataFile(playerName));
 
+        //if the file exists when we check for the specific casing, use that file.
+        //On Windows machines the FS will not be case sensitive, however, for *nix based machines
+        //the file systems and the file I/O API are case sensitive. We save data lowercase now
+        //however previous installations may have upper-cased filenames. Thus we will
+        //look for the filename for the file that it would be named if we create the path
+        //with a case-insensitive player name.
+
+        File CaseInsensitive = new File(getPlayerDataFile(playerName));
+        File playerFile;
+		playerFile = CaseInsensitive;
 		PlayerData playerData = new PlayerData();
 		playerData.playerName = playerName;
 
 		// if it doesn't exist as a file
 		if (!playerFile.exists()) {
+
 			// create a file with defaults, but only if the player has been
 			// online before.
 			Player playerobj = Bukkit.getPlayer(playerName);
@@ -180,7 +268,7 @@ public class FlatFileDataStore extends DataStore {
 		else {
 			BufferedReader inStream = null;
 			try {
-				inStream = new BufferedReader(new FileReader(playerFile.getAbsolutePath()));
+                inStream = new BufferedReader(new FileReader(playerFile.getAbsolutePath()));
 
 				// first line is last login timestamp
 				String lastLoginTimestampString = inStream.readLine();
@@ -209,16 +297,21 @@ public class FlatFileDataStore extends DataStore {
 
 				// fourth line is a double-semicolon-delimited list of claims,
 				// which is currently ignored
-				// String claimsString = inStream.readLine();
-				inStream.readLine();
 
+                try {
+				inStream.readLine();
+                String playerinventoryclear = inStream.readLine();
+                playerData.ClearInventoryOnJoin = Boolean.parseBoolean(playerinventoryclear);
+                }
+                catch(Exception exx){} //do nothing, seems like there was no value. Oh well.
 				inStream.close();
 			}
 
 			// if there's any problem with the file's content, log an error
 			// message
 			catch (Exception e) {
-				GriefPrevention.AddLogEntry("Unable to load data for player \"" + playerName + "\": " + e.getMessage());
+				GriefPrevention.AddLogEntry("Unable to load data for player \"" + playerName + "\": ");
+
 			}
 
 			try {
@@ -365,7 +458,7 @@ public class FlatFileDataStore extends DataStore {
 
 	synchronized void migrateData(DataStore targetStore) {
 		ForceLoadAllClaims(this);
-
+        targetStore.ClearInventoryOnJoinPlayers= ClearInventoryOnJoinPlayers;
 		// migrate claims
 		for (Claim c : this.claims) {
 			GriefPrevention.AddLogEntry("Migrating Claim #" + c.getID());
@@ -381,7 +474,9 @@ public class FlatFileDataStore extends DataStore {
 
 		// migrate players
 		for (PlayerData pdata : getAllPlayerData()) {
+
 			targetStore.playerNameToPlayerDataMap.put(pdata.playerName, pdata);
+            targetStore.savePlayerData(pdata.playerName,pdata);
 
 		}
 
@@ -444,11 +539,11 @@ public class FlatFileDataStore extends DataStore {
 			FileReader fr = new FileReader(SourceFile.getAbsolutePath());
 			inStream = new BufferedReader(fr);
 			String line = inStream.readLine();
-
+            String subclaimtext = null;
 			while (line != null) {
-				Long usesubclaimid = null;
+
 				if (line.toUpperCase().startsWith("SUB:")) {
-					usesubclaimid = Long.parseLong(line.substring(4));
+                    subclaimtext=line.substring(4);
 					line = inStream.readLine(); // read to the next line.
 				}
 				// first line is lesser boundary corner location
@@ -537,7 +632,7 @@ public class FlatFileDataStore extends DataStore {
 					else {
 						topLevelClaim.modifiedDate = new Date(SourceFile.lastModified());
 
-						this.claims.add(topLevelClaim);
+						addClaim(topLevelClaim);
 
 						topLevelClaim.inDataStore = true;
 					}
@@ -548,18 +643,14 @@ public class FlatFileDataStore extends DataStore {
 				else {
 
 					// if it starts with "sub:" then it is a subid.
-					if (usesubclaimid == null) {
 
-						// otherwise, must be older file without subclaim ID.
-						// default to current count of children.
-						usesubclaimid = (long) topLevelClaim.children.size();
-						// System.out.println("Older file: Assigned SubID:" +
-						// usesubid +" with Parent claim:" + topLevelClaim);
-						// reset...
-					}
 					// as such, try to read in the subclaim ID.
-					Claim subdivision = new Claim(lesserBoundaryCorner, greaterBoundaryCorner, "--subdivision--", builderNames, containerNames, accessorNames, managerNames, null, neverdelete);
-					subdivision.subClaimid = usesubclaimid;
+
+					Claim subdivision = new Claim(lesserBoundaryCorner, greaterBoundaryCorner,topLevelClaim.getOwnerName() , builderNames, containerNames, accessorNames, managerNames, claimID, neverdelete);
+                    try {subdivision.id = Long.parseLong(subclaimtext);}
+                    catch(NumberFormatException nfe){
+                        subdivision.id=new Long(-1);
+                    }
 					subdivision.modifiedDate = new Date(SourceFile.lastModified());
 					subdivision.parent = topLevelClaim;
 					topLevelClaim.children.add(subdivision);
@@ -635,7 +726,7 @@ public class FlatFileDataStore extends DataStore {
 		BufferedWriter outStream = null;
 		try {
 			// open the player's file
-			File playerDataFile = new File(playerDataFolderPath + File.separator + playerName);
+			File playerDataFile = new File(playerDataFolderPath + File.separator + playerName.toLowerCase());
 			playerDataFile.createNewFile();
 			outStream = new BufferedWriter(new FileWriter(playerDataFile));
 
@@ -655,12 +746,16 @@ public class FlatFileDataStore extends DataStore {
 			outStream.newLine();
 
 			// fourth line is a double-semicolon-delimited list of claims
-			if (playerData.claims.size() > 0) {
+			/*if (playerData.claims.size() > 0) {
 				outStream.write(this.locationToString(playerData.claims.get(0).getLesserBoundaryCorner()));
 				for (int i = 1; i < playerData.claims.size(); i++) {
 					outStream.write(";;" + this.locationToString(playerData.claims.get(i).getLesserBoundaryCorner()));
 				}
-			}
+			} */
+
+            //write out wether the player's inventory needs to be cleared on join.
+            outStream.newLine();
+            outStream.write(String.valueOf(playerData.ClearInventoryOnJoin));
 			outStream.newLine();
 		}
 
@@ -742,8 +837,9 @@ public class FlatFileDataStore extends DataStore {
 	// actually writes claim data to an output stream
 	synchronized private void writeClaimData(Claim claim, BufferedWriter outStream) throws IOException {
 		if (claim.parent != null) {
-			Long ChildID = claim.getSubClaimID() == null ? claim.getID() : claim.getSubClaimID();
-			outStream.write("sub:" + String.valueOf(ChildID));
+            if(claim.id<0-1) claim.id = getNextClaimID();
+			Long ChildID = claim.getID();
+			outStream.write("SUB:" + String.valueOf(ChildID));
 			outStream.newLine();
 
 		}
@@ -801,6 +897,7 @@ public class FlatFileDataStore extends DataStore {
 
 	@Override
 	synchronized void writeClaimToStorage(Claim claim) {
+        if(claim.id<0) claim.id = getNextClaimID();
 		String claimID = String.valueOf(claim.id);
 
 		BufferedWriter outStream = null;

@@ -44,7 +44,20 @@ public class WorldWatcher implements Listener {
 		// + " Equal:" + Source.getWorld().equals(Target));
 		return new Location(Target, Source.getX(), Source.getY(), Source.getZ());
 	}
-
+    public void Refresh()
+    {
+        //first stop existing tasks.
+        for(WorldClaimCleanupTask canceltask:WorldClaimTasks.values()){
+            Bukkit.getScheduler().cancelTask(canceltask.getTaskCookie());
+        }
+        storedloaded = new HashSet<World>();
+        WorldClaimTasks = new HashMap<String,WorldClaimCleanupTask>();
+        LoadedWorlds = new HashSet<World>();
+        for(World iterate:Bukkit.getWorlds()){
+            Debugger.Write("force-loading world:" + iterate.getName(),DebugLevel.Verbose);
+            WorldLoad(new WorldLoadEvent(iterate));
+        }
+    }
 	@EventHandler
 	public void WorldLoad(WorldLoadEvent event) {
 
@@ -72,7 +85,7 @@ public class WorldWatcher implements Listener {
 		WorldClaimTasks.put(event.getWorld().getName(), createdTask);
 		if (wc.getClaimCleanupEnabled()) {
             //ten minute cleanup interval.
-			int taskCookie = Bukkit.getScheduler().scheduleSyncRepeatingTask(GriefPrevention.instance, createdTask, 60*5*20, 60*5*10);
+			int taskCookie = Bukkit.getScheduler().scheduleSyncRepeatingTask(GriefPrevention.instance, createdTask, wc.getClaimCleanupInterval()*20, wc.getClaimCleanupInterval()*20);
 			createdTask.setTaskCookie(taskCookie);
 		}
 

@@ -18,10 +18,7 @@ import me.ryanhamshire.GriefPrevention.Configuration.ClaimBehaviourData.SiegePVP
 import me.ryanhamshire.GriefPrevention.Configuration.PlacementRules.SeaLevelOverrideTypes;
 import me.ryanhamshire.GriefPrevention.tasks.DeliverClaimBlocksTask;
 
-import org.bukkit.Bukkit;
-import org.bukkit.GameMode;
-import org.bukkit.Material;
-import org.bukkit.World;
+import org.bukkit.*;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -115,13 +112,15 @@ public class WorldConfig {
     // are not cleaned up.
 
     private int config_claimcleanup_maxinvestmentscore; // maximum
-    // investmentscore.
-    // claims with a higher
-    // score will not be
-    // cleaned up. if set to
-    // 0, claim cleanup will
-    // not have it's score
-    // calculated.
+    // investmentscore. claims with a higher score will not be cleaned up. if set to 0, claim cleanup will not have it's score calculated.
+
+    private int config_claimcleanup_interval = 5*60;
+    public int getClaimCleanupInterval(){ return config_claimcleanup_interval;}
+
+    private int config_claimcleanup_quantity = 5;
+    public int getClaimCleanupQuantity(){ return config_claimcleanup_quantity;}
+
+
 
     private boolean config_claims_Abandon_NatureRestoration; // whether survival
     // claims will
@@ -261,15 +260,23 @@ public class WorldConfig {
     private boolean config_eavesdrop;
 
     private boolean config_eavesdrop_bookdrop;
+    private boolean config_eavesdrop_books;
+    public boolean getEavesDropBooks(){ return config_eavesdrop_books;}
     // list of whisper commands to eavesdrop on
     private ArrayList<String> config_eavesdrop_whisperCommands;
 
     private int config_entityClaimLimit = 0; // 0 is no limit.
 
     private boolean config_entitycleanup_enabled;
+    public enum HorseTrustConstants
+    {
+        Standard,
+        Extended,
+        Disabled,
 
-    private boolean HorseTrust=false;
-    public boolean getHorseTrust(){ return HorseTrust;}
+    }
+    private HorseTrustConstants HorseTrust=HorseTrustConstants.Disabled;
+    public HorseTrustConstants getHorseTrust(){ return HorseTrust;}
     private int config_message_cooldown_claims = 0; // claims cooldown. 0= no cooldown.
 
     private int config_message_cooldown_stuck = 0; // stuck cooldown. 0= no cooldown.
@@ -487,6 +494,10 @@ public class WorldConfig {
 
     private ClaimBehaviourData CreeperExplosionsBehaviour;
 
+    private ClaimBehaviourData EnderDragonDamageBehaviour;
+
+    private ClaimBehaviourData EnderDragonDamageBlockBehaviour;
+
     private ClaimBehaviourData DispenserArrowBehaviour;
 
     private ClaimBehaviourData DispenserEggBehaviour;
@@ -521,9 +532,29 @@ public class WorldConfig {
 
     private ClaimBehaviourData EnderPearlTargets;
 
+    //tweak: moved VehicleDamage to separate nodes.
+
     private ClaimBehaviourData VehicleDamage;
 
     private ClaimBehaviourData EnvironmentalVehicleDamage;
+
+    private ClaimBehaviourData Riding_Boat;
+
+    private ClaimBehaviourData Riding_Minecart;
+
+    private ClaimBehaviourData Riding_Pig;
+
+    private ClaimBehaviourData Riding_Horse;
+
+    private ClaimBehaviourData Placement_Boat;
+    private ClaimBehaviourData Placement_Minecart;
+
+    public ClaimBehaviourData getBoatPlacement(){ return Placement_Boat;}
+    public ClaimBehaviourData getMinecartPlacement() { return Placement_Minecart;}
+    public ClaimBehaviourData getBoatRiding(){ return Riding_Boat;}
+    public ClaimBehaviourData getMinecartRiding(){ return Riding_Minecart;}
+    public ClaimBehaviourData getPigRiding(){ return Riding_Pig;}
+    public ClaimBehaviourData getHorseRiding() { return Riding_Horse;}
 
     private ClaimBehaviourData EquineInventoryRules;
 
@@ -543,7 +574,8 @@ public class WorldConfig {
     // IronGolems can be
     // spawned.
 
-
+    private ClaimBehaviourData SpawnEggBehaviour;
+    public ClaimBehaviourData getSpawnEggBehaviour() { return SpawnEggBehaviour;}
     private List<ItemUsageRules> ItemRules;
 
 
@@ -620,12 +652,7 @@ public class WorldConfig {
 
     private ClaimBehaviourData TNTExplosionsBehaviour;
 
-    private ClaimBehaviourData TNTCoalesceBehaviour;
 
-    public ClaimBehaviourData getTNTCoalesceBehaviour() {
-
-        return TNTCoalesceBehaviour;
-    }
 
     private ClaimBehaviourData TrapDoors;
 
@@ -683,10 +710,27 @@ public class WorldConfig {
 
     private ClaimBehaviourData ZombieDoorBreaking;
 
-
+    private int MinLavaDistance = 10;
+    public int getMinLavaDistance(){
+        return MinLavaDistance;
+    }
     public WorldConfig(String worldname) {
         this(worldname, new YamlConfiguration(), ConfigData.createTargetConfiguration(worldname));
     }
+    private boolean isValidRule(FileConfiguration Source, String NodePath){
+
+        ConfigurationSection wild = Source.getConfigurationSection(NodePath + ".wilderness");
+        ConfigurationSection claim = Source.getConfigurationSection(NodePath + "claims");
+        if(wild!=null && claim!=null)
+        {
+            return true; //if neither is null, it's likely a valid rule.
+        }
+
+     return false;
+    }
+
+
+
 
     // constructor accepts a Name and a FileConfiguration.
     public WorldConfig(String pName, FileConfiguration config, FileConfiguration outConfig) {
@@ -706,7 +750,8 @@ public class WorldConfig {
         }
 
         Debugger.Write("Reading Configuration for World:" + pName, DebugLevel.Verbose);
-
+        this.griefprevention_enabled = config.getBoolean("GriefPrevention.Enabled", true);
+        outConfig.set("GriefPrevention.Enabled", this.griefprevention_enabled);
         this.config_seaLevelOverride = config.getInt("GriefPrevention.SeaLevelOverride", -1);
         if (this.config_seaLevelOverride == -1) {
 
@@ -723,17 +768,32 @@ public class WorldConfig {
         }
         outConfig.set("GriefPrevention.SeaLevelOverride.Enabled", config_seaLevelOverride != -1);
 
-        this.griefprevention_enabled = config.getBoolean("GriefPrevention.Enabled", true);
-        outConfig.set("GriefPrevention.Enabled", this.griefprevention_enabled);
+
         // read in the data for TNT explosions and Golem/Wither placements.
         this.config_afkDistanceCheck = config.getInt("GriefPrevention.AFKDistance", 3);
-
-        this.HorseTrust = config.getBoolean("GriefPrevention.ExtendedHorseTrust",false);
-        String SiegeDefenderStr = config.getString("GriefPrevention.SiegeDefendable", ClaimBehaviourMode.RequireOwner.name());
+        if(outConfig.getConfigurationSection("GriefPrevention").contains("ExtendedHorseTrust")){
+           boolean oldHorseTrust = config.getBoolean("GriefPrevention.ExtendedHorseTrust",false);
+           HorseTrust = oldHorseTrust?HorseTrustConstants.Extended:HorseTrustConstants.Standard;
+        }
+        else {
+           String newHorseTrust = config.getString("GriefPrevention.HorseTrust","");
+            try {
+            this.HorseTrust =  HorseTrustConstants.valueOf(newHorseTrust);
+            }
+            catch(Exception exx){
+                if(newHorseTrust.equalsIgnoreCase("Enabled")) HorseTrust = HorseTrustConstants.Standard; else
+                HorseTrust = HorseTrustConstants.Disabled;
+            }
+        }
+        outConfig.set("GriefPrevention.HorseTrust",HorseTrust.name());
+        String SiegeDefenderStr = config.getString("GriefPrevention.SiegeDefendable", "RequireOwner");
         ClaimBehaviourMode ccm = ClaimBehaviourMode.parseMode(SiegeDefenderStr);
+        outConfig.set("GriefPrevention.SiegeDefendable",SiegeDefenderStr);
         if (ccm == null) SiegeDefender = ClaimBehaviourMode.RequireOwner;
         else SiegeDefender = ccm;
 
+        this.MinLavaDistance = config.getInt("GriefPrevention.MinLavaPlacementDistance",10);
+        outConfig.set("GriefPrevention.MinLavaPlacementDistance",MinLavaDistance);
 
         this.config_entityClaimLimit = config.getInt("GriefPrevention.Claims.EntityLimit", 0);
         outConfig.set("GriefPrevention.Claims.EntityLimit", 0);
@@ -744,7 +804,7 @@ public class WorldConfig {
         this.SiegeAutoTransfer = config.getBoolean("GriefPrevention.Siege.ItemTransfer", true);
         outConfig.set("GriefPrevention.Siege.ItemTransfer", this.SiegeAutoTransfer);
 
-        this.SiegeBlockRevert = config.getBoolean("GriefPrevention.Siege.BlockRevert", false);
+        this.SiegeBlockRevert = config.getBoolean("GriefPrevention.Siege.BlockRevert", true);
         outConfig.set("GriefPrevention.Siege.BlockRevert", SiegeBlockRevert);
         // read trash blocks.
         // Cobblestone,Torch,Dirt,Sapling,Gravel,Sand,TNT,Workbench
@@ -783,13 +843,17 @@ public class WorldConfig {
         outConfig.set("GriefPrevention.Claims.SiegeTamedAnimalDistance", Siege_TamedAnimalDistance);
         this.claims_enabled = config.getBoolean("GriefPrevention.Claims.Enabled", true);
         outConfig.set("GriefPrevention.Claims.Enabled", claims_enabled);
-        this.config_entitycleanup_enabled = config.getBoolean("GriefPrevention.CleanupTasks.Claims", true);
+        this.config_entitycleanup_enabled = config.getBoolean("GriefPrevention.CleanupTasks.Entity", true);
         outConfig.set("GriefPrevention.CleanupTasks.Entity", this.config_entitycleanup_enabled);
         // this.config_treecleanup_enabled =
         // config.getBoolean("GriefPrevention.CleanupTasks.Trees",true);
         // this.config_naturerestorecleanup_enabled =
         // config.getBoolean("GriefPrevention.CleanupTasks.NatureRestore",true);
         this.config_claimcleanup_enabled = config.getBoolean("GriefPrevention.ClaimCleanup.Enabled", true);
+        this.config_claimcleanup_interval = config.getInt("GriefPrevention.ClaimCleanup.Interval",5*60);
+        this.config_claimcleanup_quantity = config.getInt("GriefPrevention.ClaimCleanup.Quantity",5);
+        outConfig.set("GriefPrevention.ClaimCleanup.Interval",config_claimcleanup_interval);
+        outConfig.set("GriefPrevention.ClaimCleanup.Quantity",config_claimcleanup_quantity);
         this.config_claimcleanup_maximumsize = config.getInt("GriefPrevention.ClaimCleanup.MaximumSize", 25);
         // max investment score, defaults to 400 for creative worlds.
         this.config_claimcleanup_maxinvestmentscore = config.getInt("GriefPrevention.ClaimCleanup.MaxInvestmentScore", isCreative ? 400 : 100);
@@ -913,7 +977,7 @@ public class WorldConfig {
         this.config_pvp_blockContainers = config.getBoolean("GriefPrevention.PvP.BlockContainers", true);
 
 
-        outConfig.set("GriefPrevention.PvP.SpawnProtect.Enabled", String.valueOf(SpawnProtectEnabled));
+        outConfig.set("GriefPrevention.PvP.SpawnProtect.Enabled", SpawnProtectEnabled);
         outConfig.set("GriefPrevention.PvP.SpawnProtect.Timeout", SpawnProtectTimeout);
         outConfig.set("GriefPrevention.PvP.SpawnProtect.DisableonInstigate", SpawnProtectDisableonInstigate);
         outConfig.set("GriefPrevention.PvP.SpawnProtect.DisableonItemPickup", SpawnProtectDisableonItemPickup);
@@ -933,10 +997,14 @@ public class WorldConfig {
         outConfig.set("GriefPrevention.PvP.CombatTimeoutSeconds", this.config_pvp_combatTimeoutSeconds);
         outConfig.set("GriefPrevention.PvP.AllowCombatItemDrop", this.config_pvp_allowCombatItemDrop);
         outConfig.set("GriefPrevention.PvP.BlockedSlashCommands", bannedPvPCommandsList);
-        outConfig.set("GriefPrevention.PvP.ProtectPlayersInLandClaims.PlayerOwnedClaims", this.config_pvp_noCombatInPlayerLandClaims);
-        outConfig.set("GriefPrevention.PvP.ProtectPlayersInLandClaims.AdministrativeClaims", this.config_pvp_noCombatInAdminLandClaims);
+
         this.config_trees_removeFloatingTreetops = config.getBoolean("GriefPrevention.Trees.RemoveFloatingTreetops", true);
         this.config_trees_regrowGriefedTrees = config.getBoolean("GriefPrevention.Trees.RegrowGriefedTrees", true);
+        this.config_trees_cleanupDelay = config.getInt("GriefPrevention.Trees.CleanupTimeout",60*10)*20;
+        outConfig.set("GriefPrevention.Trees.CleanupTimeout",config_trees_cleanupDelay/20);
+
+
+
         outConfig.set("GriefPrevention.PvP.BlockContainers", config_pvp_blockContainers);
 
         // this.config_blockWildernessWaterBuckets =
@@ -959,6 +1027,9 @@ public class WorldConfig {
 
         this.config_eavesdrop_bookdrop = config.getBoolean("GriefPrevention.Eavesdrop.BookDrop", false);
         outConfig.set("GriefPrevention.Eavesdrop.BookDrop", false);
+        this.config_eavesdrop_books = config.getBoolean("GriefPrevention.Eavesdrop.Books",true);
+        outConfig.set("GriefPrevention.Eavesdrop.Books",config_eavesdrop_books);
+
         outConfig.set("GriefPrevention.Eavesdrop.WhisperCommands", whisperCommandsToMonitor);
 
         this.config_smartBan = config.getBoolean("GriefPrevention.SmartBan", true);
@@ -983,7 +1054,10 @@ public class WorldConfig {
         // add found items if applicable.
         if (GriefPrevention.instance.ModdedBlocks != null) {
             for (MaterialInfo mi : GriefPrevention.instance.ModdedBlocks.FoundAccess.getMaterials()) {
-                accessTrustStrings.add(mi.toString());
+        	String miString = mi.toString();
+        	if (miString != null){
+        	    accessTrustStrings.add(miString);
+        	}
             }
         }
         // parse the list we got from the cfg file. This will ADD to the list,
@@ -1049,12 +1123,12 @@ public class WorldConfig {
             GriefPrevention.AddLogEntry("ERROR: Material " + modificationToolMaterialName + " not found.  Defaulting to the golden shovel. ");
             this.config_claims_modificationTool = Material.GOLD_SPADE;
         }
-        config_administration_tool = Material.CHAINMAIL_HELMET;
+        config_administration_tool = Material.FIRE;
         String admintoolName = config.getString("GriefPrevention.AdministrationTool", config_administration_tool.name());
         config_administration_tool = Material.getMaterial(admintoolName);
         if (config_administration_tool == null) {
             GriefPrevention.AddLogEntry("ERROR: Material " + modificationToolMaterialName + " not found.  Defaulting to the chainmail helm.");
-            this.config_claims_modificationTool = Material.CHAINMAIL_HELMET;
+            this.config_claims_modificationTool = Material.FIRE;
         }
 
 
@@ -1063,12 +1137,7 @@ public class WorldConfig {
 		 * // Removed this segment. It supports Access, Container, and Trust
 		 * config settings for being able to hit other players with certain
 		 * items to add them to a claim. It was removed because it "doesn't fit"
-		 * and "should be in another plugin". That makes a change since usually
-		 * that line is just a cop out to avoid adding a new feature. Because
-		 * being able to change trust in a claim without commands is totally not
-		 * Grief Related. But then again, it's the same thing as being able to
-		 * visualize claims and make them with a gold shovel. That's not grief
-		 * prevention related either, and neither are sieges.
+		 * and "should be in another plugin". I kept it here because...meh, may as well.
 		 *
 		 *
 		 * String AccessTrustTool =
@@ -1111,9 +1180,9 @@ public class WorldConfig {
 		 */
         // default for siege worlds list
         // ArrayList<String> defaultSiegeWorldNames = new ArrayList<String>();
-        this.config_siege_enabled = config.getBoolean("GriefPrevention.Siege.Enabled", isPvP);
-        // get siege world names from the config file
 
+        this.config_siege_enabled = config.getBoolean("GriefPrevention.Siege.Enabled", isPvP);
+         outConfig.set("GriefPrevention.Siege.Enabled",config_siege_enabled);
         // default siege blocks
         this.config_siege_blocks = new ArrayList<SiegeableData>();
         this.config_siege_blocks.add(new SiegeableData(Material.DIRT.name()));
@@ -1128,19 +1197,46 @@ public class WorldConfig {
         this.config_siege_blocks.add(new SiegeableData(Material.WOOL.name()));
         this.config_siege_blocks.add(new SiegeableData(Material.SNOW.name()));
 
+        if(GriefPrevention.isMCVersionorLater(GriefPrevention.MinecraftVersions.MC17)){
+            this.config_siege_blocks.add(new SiegeableData(Material.STAINED_GLASS.name()));
+            this.config_siege_blocks.add(new SiegeableData(Material.STAINED_GLASS_PANE.name()));
+        }
+
+
         this.config_siege_blocks = SiegeableData.readList(config, outConfig, "GriefPrevention.Siege.BreakableBlocks", config_siege_blocks);
         config_TNTSiege_blocks = new ArrayList<SiegeableData>();
         //go with cobble for now.
+
+
+        for(SiegeableData sd:config_siege_blocks){
+            config_TNTSiege_blocks.add(sd);
+        }
+
         config_TNTSiege_blocks.add(new SiegeableData(Material.BRICK.name()));
         config_TNTSiege_blocks.add(new SiegeableData(Material.CLAY_BRICK.name()));
+        config_TNTSiege_blocks.add(new SiegeableData(Material.NETHER_BRICK.name()));
+        config_TNTSiege_blocks.add(new SiegeableData(Material.SANDSTONE.name()));
+        config_TNTSiege_blocks.add(new SiegeableData(Material.STONE.name()));
+        if(GriefPrevention.isMCVersionorLater(GriefPrevention.MinecraftVersions.MC16)){
+            config_TNTSiege_blocks.add(new SiegeableData(Material.STAINED_CLAY.name()));
+            config_TNTSiege_blocks.add(new SiegeableData(Material.HARD_CLAY.name()));
+        }
+
 
         this.config_TNTSiege_blocks = SiegeableData.readList(config, outConfig, "GriefPrevention.Siege.ExplosionBreakableBlocks", config_TNTSiege_blocks);
 
         //List<String> breakableBlocksList = config.getStringList("GriefPrevention.Siege.BreakableBlocks");
 
-        this.config_pvp_noCombatInPlayerLandClaims = config.getBoolean("GriefPrevention.PvP.ProtectPlayersInLandClaims.PlayerOwnedClaims", !this.config_siege_enabled);
+        this.config_pvp_noCombatInPlayerLandClaims = config.getBoolean("GriefPrevention.PvP.ProtectPlayersInLandClaims.PlayerOwnedClaims");
+
+        Debugger.Write("\"GriefPrevention.PvP.ProtectPlayersInLandClaims.PlayerOwnedClaims\" is " + String.valueOf(config_pvp_noCombatInPlayerLandClaims),DebugLevel.Verbose);
+
         this.config_pvp_noCombatInAdminLandClaims = config.getBoolean("GriefPrevention.PvP.ProtectPlayersInLandClaims.AdministrativeClaims", !this.config_siege_enabled);
-        this.SpawnProtectEnabled = config.getBoolean("GriefPrevention.PvP.ProtectFreshSpawns", true);
+
+        outConfig.set("GriefPrevention.PvP.ProtectPlayersInLandClaims.PlayerOwnedClaims", this.config_pvp_noCombatInPlayerLandClaims);
+        outConfig.set("GriefPrevention.PvP.ProtectPlayersInLandClaims.AdministrativeClaims", this.config_pvp_noCombatInAdminLandClaims);
+
+        //this.SpawnProtectEnabled = config.getBoolean("GriefPrevention.PvP.ProtectFreshSpawns", true);
         // outConfig.set("GriefPrevention.Claims.Worlds",
         // claimsEnabledWorldNames);
         // outConfig.set("GriefPrevention.Claims.CreativeRulesWorlds",
@@ -1206,24 +1302,36 @@ public class WorldConfig {
         this.FireDestroyBehaviour = new ClaimBehaviourData("Fire Destruction", config, outConfig, "GriefPrevention.Rules.FireDestroys", new ClaimBehaviourData("GriefPrevention.Rules.FireDestroys", PlacementRules.Neither, PlacementRules.Neither, ClaimBehaviourMode.Disabled));
         this.FireSpreadOriginBehaviour = new ClaimBehaviourData("Fire Spread Origin", config, outConfig, "GriefPrevention.Rules.FireSpreadOrigin", new ClaimBehaviourData("Fire Spread Origin", PlacementRules.Neither, PlacementRules.Neither, ClaimBehaviourMode.Disabled));
         this.FireSpreadTargetBehaviour = new ClaimBehaviourData("Fire Spread Target", config, outConfig, "GriefPrevention.Rules.FireSpreadTarget", new ClaimBehaviourData("Fire Spread Target", PlacementRules.Neither, PlacementRules.Neither, ClaimBehaviourMode.Disabled));
-        this.CreeperExplosionsBehaviour = new ClaimBehaviourData("Creeper Explosions", config, outConfig, "GriefPrevention.Rules.CreeperExplosions", new ClaimBehaviourData("Creeper Explosions", PlacementRules.AboveOnly, PlacementRules.Both, ClaimBehaviourMode.Disabled).setSeaLevelOffsets(SeaLevelOverrideTypes.Offset, -1));
+        this.CreeperExplosionsBehaviour = new ClaimBehaviourData("Creeper Explosions", config, outConfig, "GriefPrevention.Rules.CreeperExplosions", new ClaimBehaviourData("Creeper Explosions", PlacementRules.BelowOnly, PlacementRules.Both, ClaimBehaviourMode.Disabled).setSeaLevelOffsets(SeaLevelOverrideTypes.Offset, -1));
         this.WitherExplosionBehaviour = new ClaimBehaviourData("Wither Explosions", config, outConfig, "GriefPrevention.Rules.WitherExplosions", new ClaimBehaviourData("Wither Explosions", PlacementRules.Neither, PlacementRules.Neither, ClaimBehaviourMode.Disabled).setSeaLevelOffsets(SeaLevelOverrideTypes.Offset, -1));
         this.TNTExplosionsBehaviour = new ClaimBehaviourData("TNT Explosions", config, outConfig, "GriefPrevention.Rules.TNTExplosions",
+
+
+
                 ClaimBehaviourData.getAll("TNT Explosions").setSeaLevelOffsets(SeaLevelOverrideTypes.Offset, -1));
-        this.TNTCoalesceBehaviour = new ClaimBehaviourData("TNT Coalescing", config, outConfig, "GriefPrevention.Rules.TNTCoalesce",
-                ClaimBehaviourData.getAll("TNT Coalescing").setSiegeOverrides(SiegePVPOverrideConstants.None, SiegePVPOverrideConstants.None, SiegePVPOverrideConstants.Allow));
+
+        this.EnderDragonDamageBehaviour = new ClaimBehaviourData("Ender Dragon Damage",config,outConfig,"GriefPrevention.Rules.EnderDragonDamage",
+                new ClaimBehaviourData("Ender Dragon Damage", PlacementRules.AboveOnly, PlacementRules.Both, ClaimBehaviourMode.Disabled).setSeaLevelOffsets(SeaLevelOverrideTypes.Offset, -1));
+        this.EnderDragonDamageBlockBehaviour = new ClaimBehaviourData("Ender Dragon Block Damage",config,outConfig,"GriefPrevention.Rules.EnderDragonDamage",
+                new ClaimBehaviourData("Ender Dragon Block Damage", PlacementRules.AboveOnly, PlacementRules.Both, ClaimBehaviourMode.Disabled).setSeaLevelOffsets(SeaLevelOverrideTypes.Offset, -1));
+
         this.EnderEyePortalRules = new ClaimBehaviourData("Ender Portal Fill", config, outConfig, "GriefPrevention.Rules.EnderPortalFill",
                 ClaimBehaviourData.getAll("Ender Portal Fill").setBehaviourMode(ClaimBehaviourMode.RequireBuild));
         this.FlowerPotRules = new ClaimBehaviourData("Flower Pots", config, outConfig, "GriefPrevention.Rules.FlowerPots",
                 ClaimBehaviourData.getAll("Flower Pots").setBehaviourMode(ClaimBehaviourMode.RequireBuild));
         this.ItemFrameItemRules = new ClaimBehaviourData("Item Frame Items", config, outConfig, "GriefPrevention.Rules.ItemFrameItems",
-                ClaimBehaviourData.getAll("Flower Pots").setBehaviourMode(ClaimBehaviourMode.RequireBuild));
-        this.OtherExplosionBehaviour = new ClaimBehaviourData("Other Explosions", config, outConfig, "GriefPrevention.Rules.OtherExplosions", ClaimBehaviourData.getAll("Other Explosions").setSeaLevelOffsets(SeaLevelOverrideTypes.Offset, -1));
-        this.CreeperExplosionBlockDamageBehaviour = new ClaimBehaviourData("Creeper Explosion Damage", config, outConfig, "GriefPrevention.Rules.BlockDamageCreeperExplosion", new ClaimBehaviourData("Creeper Explosion Damage", PlacementRules.AboveOnly, PlacementRules.Neither, ClaimBehaviourMode.Disabled).setSeaLevelOffsets(SeaLevelOverrideTypes.Offset, -1));
+                ClaimBehaviourData.getAll("Item Frame").setBehaviourMode(ClaimBehaviourMode.RequireBuild));
+        this.SpawnEggBehaviour = new ClaimBehaviourData("Spawn Eggs",config,outConfig,"GriefPrevention.Rules.SpawnEggs",
+                ClaimBehaviourData.getAll("Monster Eggs").setBehaviourMode(ClaimBehaviourMode.RequireBuild));
+
+
+
         this.WitherExplosionBlockDamageBehaviour = new ClaimBehaviourData("Wither Explosion Damage", config, outConfig, "GriefPrevention.Rules.BlockDamageWitherExplosions", new ClaimBehaviourData("Wither Explosion Damage", PlacementRules.AboveOnly, PlacementRules.Neither, ClaimBehaviourMode.Disabled).setSeaLevelOffsets(SeaLevelOverrideTypes.Offset, -1));
+        this.OtherExplosionBehaviour = new ClaimBehaviourData("Other Explosions", config, outConfig, "GriefPrevention.Rules.OtherExplosions", ClaimBehaviourData.getAll("Other Explosions").setSeaLevelOffsets(SeaLevelOverrideTypes.Offset, -1));
         this.WitherEatBehaviour = new ClaimBehaviourData("Wither Eating", config, outConfig, "GriefPrevention.Rules.WitherEating", new ClaimBehaviourData("Wither Eating", PlacementRules.AboveOnly, PlacementRules.Neither, ClaimBehaviourMode.Disabled));
-        this.TNTExplosionBlockDamageBehaviour = new ClaimBehaviourData("TNT Explosion Damage", config, outConfig, "GriefPrevention.Rules.BlockDamageTNTExplosions", ClaimBehaviourData.getOutsideClaims("TNT Explosion Damage").setSeaLevelOffsets(SeaLevelOverrideTypes.Offset, -1));
-        this.OtherExplosionBlockDamageBehaviour = new ClaimBehaviourData("Other Explosion Damage", config, outConfig, "GriefPrevention.Rules.BlockDamageOtherExplosions", ClaimBehaviourData.getOutsideClaims("Other Explosion Damage").getAboveSeaLevel("Other Explosion Damage").setSeaLevelOffsets(SeaLevelOverrideTypes.Offset, -1));
+        this.CreeperExplosionBlockDamageBehaviour = new ClaimBehaviourData("Creeper Explosion Damage", config, outConfig, "GriefPrevention.Rules.BlockDamageCreeperExplosion", new ClaimBehaviourData("Creeper Explosion Damage", PlacementRules.AboveOnly, PlacementRules.Neither, ClaimBehaviourMode.Disabled).setSeaLevelOffsets(SeaLevelOverrideTypes.Offset, -1).setSiegeNonPlayerOverride(SiegePVPOverrideConstants.Allow));
+        this.TNTExplosionBlockDamageBehaviour = new ClaimBehaviourData("TNT Explosion Damage", config, outConfig, "GriefPrevention.Rules.BlockDamageTNTExplosions", ClaimBehaviourData.getAll("TNT Explosion Damage").setSeaLevelOffsets(SeaLevelOverrideTypes.Offset, -1).setSiegeNonPlayerOverride(SiegePVPOverrideConstants.Allow));
+        this.OtherExplosionBlockDamageBehaviour = new ClaimBehaviourData("Other Explosion Damage", config, outConfig, "GriefPrevention.Rules.BlockDamageOtherExplosions", ClaimBehaviourData.getOutsideClaims("Other Explosion Damage").getAboveSeaLevel("Other Explosion Damage").setSeaLevelOffsets(SeaLevelOverrideTypes.Offset, -1).setSiegeNonPlayerOverride(SiegePVPOverrideConstants.Allow));
         ClaimBehaviourData WaterRequire = new ClaimBehaviourData("Water Placement", PlacementRules.BelowOnly, PlacementRules.Both, ClaimBehaviourMode.RequireBuild);
         ClaimBehaviourData LavaRequire = new ClaimBehaviourData("Lava Placement", PlacementRules.BelowOnly, PlacementRules.Both, ClaimBehaviourMode.RequireBuild).setWildernessRequiredPermission(PermNodes.LavaPermission);
         this.WaterBucketEmptyBehaviour = new ClaimBehaviourData("Water Placement", config, outConfig, "GriefPrevention.Rules.WaterBuckets.Place", WaterRequire).setWildernessRequiredPermission(PermNodes.WaterPermission);
@@ -1238,6 +1346,35 @@ public class WorldConfig {
         VillagerTrades = new ClaimBehaviourData("Villager Trading", config, outConfig, "GriefPrevention.Rules.VillagerTrading", ClaimBehaviourData.getInsideClaims("Villager Trading").setBehaviourMode(ClaimBehaviourMode.RequireContainer));
         this.VehicleDamage = new ClaimBehaviourData("Vehicle Damage", config, outConfig, "GriefPrevention.Rules.VehicleDamage", ClaimBehaviourData.getAll("Vehicle Damage").setBehaviourMode(ClaimBehaviourMode.RequireContainer));
         this.EnvironmentalVehicleDamage = new ClaimBehaviourData("Environmental Vehicle Damage", config, outConfig, "GriefPrevention.Rules.EnvironmentalVehicleDamage", ClaimBehaviourData.getOutsideClaims("Environmental Vehicle Damage"));
+        //WIP: not applicable for this commit...
+        ClaimBehaviourData vehiclerule = new ClaimBehaviourData("Vehicle Boarding",config,outConfig,"GriefPrevention.Rules.VehicleBoarding",
+                ClaimBehaviourData.getAll("Vehicle Boarding").setBehaviourMode(ClaimBehaviourMode.RequireContainer));
+        if(isValidRule(config,"GriefPrevention.Rules.VehicleBoarding")){
+           Riding_Pig = Riding_Horse = vehiclerule;
+
+        }
+
+        //Pig,Boat,Minecart, Horse.
+        if(isValidRule(config,"GriefPrevention.Rules.Riding.Boat")){
+            Riding_Boat = new ClaimBehaviourData("Boat Riding",config,outConfig,
+                    "GriefPrevention.Rules.Riding.Boat",
+                    ClaimBehaviourData.getAll("Boat Riding").setBehaviourMode(ClaimBehaviourMode.RequireContainer));
+        }
+        else {
+            Riding_Boat = vehiclerule;
+        }
+        if(isValidRule(config,"GriefPrevention.Rules.Riding.Minecart")){
+            Riding_Minecart = new ClaimBehaviourData("Minecart Riding",config,outConfig,
+                    "GriefPrevention.Rules.Riding.Minecart",
+            ClaimBehaviourData.getAll("Minecart Riding").setBehaviourMode(ClaimBehaviourMode.RequireContainer));
+        }
+        Placement_Boat =new ClaimBehaviourData("Boat Placement",config,outConfig,
+                "GriefPrevention.Rules.VehiclePlacement.Boat",
+                ClaimBehaviourData.getAll("Boat Placement").setBehaviourMode(ClaimBehaviourMode.RequireBuild));
+        Placement_Minecart = new ClaimBehaviourData("Minecart Placement",config,outConfig,
+                "GriefPrevention.Rules.VehiclePlacement.Minecart",
+                ClaimBehaviourData.getAll("Minecart Placement").setBehaviourMode(ClaimBehaviourMode.RequireBuild));
+
         this.ZombieDoorBreaking = new ClaimBehaviourData("Zombie Door Breaking", config, outConfig, "GriefPrevention.Rules.ZombieDoorBreaking", ClaimBehaviourData.getNone("Zombie Door Breaking"));
         SheepShearingRules = new ClaimBehaviourData("Sheep Shearing", config, outConfig, "GriefPrevention.Rules.SheepShearing", ClaimBehaviourData.getAll("Sheep Shearing").setBehaviourMode(ClaimBehaviourMode.RequireContainer));
         SheepDyeing = new ClaimBehaviourData("Sheep Dyeing", config, outConfig, "GriefPrevention.Rules.SheepDyeing", ClaimBehaviourData.getAll("Sheep Dyeing").setBehaviourMode(ClaimBehaviourMode.RequireContainer));
@@ -1329,7 +1466,7 @@ public class WorldConfig {
         // claim blocks is null,
         // create and schedule it to run.
         if (config_claims_blocksAccruedPerHour > 0 && GriefPrevention.instance.ClaimTask == null) {
-
+            Debugger.Write("Starting Claim Block Delivery Task.",DebugLevel.Verbose);
             GriefPrevention.instance.ClaimTask = new DeliverClaimBlocksTask();
             GriefPrevention.instance.getServer().getScheduler().scheduleSyncRepeatingTask(GriefPrevention.instance, GriefPrevention.instance.ClaimTask, 60L * 20 * 2, 60L * 20 * 5);
         }
@@ -1470,7 +1607,7 @@ public class WorldConfig {
     }
 
     public boolean Enabled() {
-        return griefprevention_enabled;
+        return  griefprevention_enabled;
     }
 
     /**
@@ -1480,7 +1617,7 @@ public class WorldConfig {
      * @return
      */
     public boolean getClaimsEnabled() {
-        return claims_enabled && this.Enabled(); //Enabled also causes this to be set.
+        return GriefPrevention.instance.Configuration.getGlobalClaimsEnabled() && claims_enabled && this.Enabled(); //Enabled also causes this to be set.
     }
 
     public int getClaimsExpirationDays() {
@@ -1548,7 +1685,12 @@ public class WorldConfig {
     public ClaimBehaviourData getCreeperExplosionBlockDamageBehaviour() {
         return CreeperExplosionBlockDamageBehaviour;
     }
-
+    public ClaimBehaviourData getEnderDragonDamageBehaviour(){
+      return EnderDragonDamageBehaviour;
+    }
+    public ClaimBehaviourData getEnderDragonDamageBlocksBehaviour(){
+        return EnderDragonDamageBlockBehaviour;
+    }
     public boolean getDenyAllExplosions() {
         return config_deny_all_explosions;
     }
@@ -1779,7 +1921,7 @@ public class WorldConfig {
     }
 
     public boolean getPvPEnabled() {
-        return config_pvp_enabled;
+        return config_pvp_enabled || GriefPrevention.instance.Configuration.getGlobalPVPEnabled();
     }
 
     public boolean getPvPNoCombatinPlayerClaims() {
@@ -1797,13 +1939,21 @@ public class WorldConfig {
     public boolean getRemoveFloatingTreetops() {
         return config_trees_removeFloatingTreetops;
     }
-
+    public int getTreeCleanupDelay(){
+        return config_trees_cleanupDelay;
+    }
+    private int config_trees_cleanupDelay = (20*60)*10; //ten minutes.
     // private HashMap<String, Integer> config_seaLevelOverride; //override for
     // sea level, because bukkit doesn't report the right value for all
     // situations
     public Integer getSeaLevelOverride() {
-        if (config_seaLevelOverride == -1)
-            return (config_seaLevelOverride = Bukkit.getWorld(this.getWorldName()).getSeaLevel());
+        if (config_seaLevelOverride == -1)                                     {
+            World w = Bukkit.createWorld(new WorldCreator(this.getWorldName()));
+            if(w==null) {
+                GriefPrevention.AddLogEntry("World:" + this.getWorldName() + " failed to load.");
+            }
+            return (config_seaLevelOverride = w.getSeaLevel());
+        }
         else
             return config_seaLevelOverride;
     }
@@ -1814,7 +1964,7 @@ public class WorldConfig {
      * @return
      */
     public boolean getSiegeEnabled() {
-        return claims_Siege_Enabled;
+        return claims_Siege_Enabled || GriefPrevention.instance.Configuration.getGlobalSiegeEnabled();
     }
 
     public int getSiegeLootChests() {
@@ -1858,7 +2008,7 @@ public class WorldConfig {
     }
 
     public boolean getSmartBan() {
-        return config_smartBan;
+        return config_smartBan && GriefPrevention.instance.Configuration.getGlobalSmartBan();
     }
 
     public ClaimBehaviourData getSnowGolemSpawnBehaviour() {
@@ -1926,7 +2076,7 @@ public class WorldConfig {
     }
 
     public boolean getSpamProtectionEnabled() {
-        return config_spam_enabled;
+        return GriefPrevention.instance.Configuration.getGlobalSpamEnabled() &&  config_spam_enabled;
     }
 
     public int getSpamShortMessageMaxLength() {

@@ -25,10 +25,12 @@ import me.ryanhamshire.GriefPrevention.Configuration.ClaimBehaviourData.ClaimAll
 import me.ryanhamshire.GriefPrevention.Configuration.SiegeableData;
 import me.ryanhamshire.GriefPrevention.Configuration.WorldConfig;
 
+import me.ryanhamshire.GriefPrevention.tasks.PvPSafePlayerTask;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.entity.*;
 import org.bukkit.entity.minecart.ExplosiveMinecart;
 import org.bukkit.event.EventHandler;
@@ -53,6 +55,8 @@ import org.bukkit.event.hanging.HangingBreakEvent;
 import org.bukkit.event.hanging.HangingPlaceEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.vehicle.VehicleDamageEvent;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.meta.BookMeta;
 
 //import com.gmail.nossr50.mcMMO;
@@ -78,7 +82,7 @@ class EntityEventHandler implements Listener {
 	}
 
 	// don't allow endermen to change blocks
-	@EventHandler(ignoreCancelled = true, priority = EventPriority.LOWEST)
+	@EventHandler(ignoreCancelled = true, priority = EventPriority.NORMAL)
 	public void onEntityChangeBlock(EntityChangeBlockEvent event) {
 		WorldConfig wc = GriefPrevention.instance.getWorldCfg(event.getEntity().getWorld());
 		if(!wc.Enabled()) return;
@@ -127,11 +131,41 @@ class EntityEventHandler implements Listener {
 	// when an entity is damaged
 	@EventHandler(ignoreCancelled = true, priority = EventPriority.HIGHEST)
 	public void onEntityDamage(EntityDamageEvent event) {
-        Debugger.Write("onEntityDamage, instance:" + event.getEntity().getClass().getName(), Debugger.DebugLevel.Verbose);
+        Debugger.Write("onEntityDamage- " + event.getClass().getName() + "  instance:" + event.getEntity().getClass().getName(), Debugger.DebugLevel.Verbose);
 
 		WorldConfig wc = GriefPrevention.instance.getWorldCfg(event.getEntity().getWorld());
 		if (!wc.Enabled())
 			return;
+
+        //PvP damage. since we have logic inside for PvP stuff, we want to disable ALL of that logic if PvP is not enabled.
+
+
+            if(event instanceof EntityDamageByEntityEvent){
+
+            EntityDamageByEntityEvent subEvent = (EntityDamageByEntityEvent) event;
+                Entity Damager = subEvent.getDamager();
+                if(Damager!=null){
+                    Debugger.Write("Damager instance:" + subEvent.getDamager().getClass().getName(), Debugger.DebugLevel.Verbose);
+                }
+
+            if(!wc.getPvPEnabled()){
+                if(Damager instanceof Player && event.getEntity() instanceof Player){
+                    return;
+                }
+            }
+                    //tweak: use class data to determine if entities were Pixelmon, and if so, allow them
+                //to damage one another.
+                if(Damager.getClass().getName().endsWith("EntityPixelmon") &&
+                        subEvent.getEntity().getClass().getName().endsWith("EntityPixelmon"))
+                {
+
+                    return;
+                }
+
+
+            }
+
+
 		// environmental damage
         Claim claimatpos = getDataStore().getClaimAt(event.getEntity().getLocation(), false);
 		if (event.getEntity() instanceof Hanging) { // hanging objects are not
@@ -167,6 +201,18 @@ class EntityEventHandler implements Listener {
 		Entity damageSource = subEvent.getDamager();
 		if (damageSource instanceof Player) {
 			attacker = (Player) damageSource;
+        }
+        else if(damageSource instanceof Fish){
+            Fish f = (Fish)damageSource;
+            if(f.getShooter() instanceof Player){
+                attacker = (Player)f.getShooter();
+            }
+        else if(damageSource instanceof EnderPearl){
+                EnderPearl p = (EnderPearl)damageSource;
+                if(p.getShooter() instanceof Player){
+                    attacker = (Player)p;
+                }
+            }
 		} else if (damageSource instanceof Arrow) {
 			arrow = (Arrow) damageSource;
 			if (arrow.getShooter() instanceof Player) {
@@ -198,8 +244,9 @@ class EntityEventHandler implements Listener {
 				attacker = (Player) wskull.getShooter();
 			}
 		}
+
         if(event.getEntity() instanceof Hanging){
-            if(wc.getItemFrameRules().Allowed(event.getEntity().getLocation(),attacker).Denied()){
+            if(attacker== null || wc.getItemFrameRules().Allowed(event.getEntity().getLocation(),attacker).Denied()){
                 event.setCancelled(true);
                 return;
             }
@@ -216,11 +263,11 @@ class EntityEventHandler implements Listener {
         if(attacker!=null && GriefPrevention.instance.isHorse(event.getEntity()) && ((Horse)event.getEntity()).isTamed()){
             Horse h = (Horse)event.getEntity();
             //if the attacker owns the horse, he can abuse it as he sees fit.
-            if(h.getOwner().getName().equals(attacker.getName()))
+            if(h.getOwner()!=null && h.getOwner().getName().equals(attacker.getName()))
             {
                 return;
             }
-            if(claimatpos==null){
+            if(h.getOwner()!=null && claimatpos==null){
 
                 if(!attacker.getName().equals(h.getOwner().getName())){
                     //deny
@@ -266,18 +313,17 @@ class EntityEventHandler implements Listener {
 
 		// if the attacker is a player and defender is a player (pvp combat)
 		if (attacker != null && event.getEntity() instanceof Player && event.getEntity().getWorld().getPVP()) {
+            if(attacker.getName().equals(((Player)event.getEntity()).getName()))
+            {
+                return;
+            }
 			// FEATURE: prevent pvp in the first minute after spawn, and prevent
 			// pvp when one or both players have no inventory
             Debugger.Write("PVP Damage detected between " + ((Player)event.getEntity()).getName() + " And " + attacker.getName(),Debugger.DebugLevel.Verbose);
 			// doesn't apply when the attacker has the no pvp immunity
 			// permission
-			// this rule is here to allow server owners to have a world with no
-			// spawn camp protection by assigning permissions based on the
-			// player's world
-			if (attacker.hasPermission(PermNodes.NoPvPImmunityPermission)){
-                Debugger.Write("PVP Damage: Attacker (" + attacker.getName() + ") has " + PermNodes.NoPvPImmunityPermission + " Permission.",Debugger.DebugLevel.Verbose);
-				return;
-            }
+
+
 
 			Player defender = (Player) (event.getEntity());
 
@@ -287,7 +333,7 @@ class EntityEventHandler implements Listener {
 				if (!defender.isOnline() || !attacker.isOnline())
 					return;
 			// otherwise if protecting spawning players
-			if (wc.getSpawnProtectEnabled()) {
+			if (wc.getSpawnProtectEnabled() && !defender.hasPermission(PermNodes.NoPvPImmunityPermission)) {
 
                 Debugger.Write("Spawn Protection Enabled...", Debugger.DebugLevel.Verbose);
                 Debugger.Write("Defender PvPImmune=" + defenderData.pvpImmune, Debugger.DebugLevel.Verbose);
@@ -346,10 +392,26 @@ class EntityEventHandler implements Listener {
 			// to avoid being defeated
 
 			long now = Calendar.getInstance().getTimeInMillis();
+            //if punishlogout is true, show a message. We don't
+            //want to spam them if they are fighting in a group and get attacked/defended from
+            //by different players,
+            if(!defenderData.inPvpCombat() ){
+                if(wc.getPvPPunishLogout() && defenderData.siegeData==null){
+                GriefPrevention.sendMessage(defender,TextMode.Warn, Messages.PvPPunishDefenderWarning, attacker.getName());
+                PvPSafePlayerTask.RunningTasks.add(new PvPSafePlayerTask(defender,wc.getPvPCombatTimeoutSeconds()*5)); //*5 for a quarter of the PVP timeout interval.
+                }
+            }
 			defenderData.lastPvpTimestamp = now;
 			defenderData.lastPvpPlayer = attacker.getName();
+            if(!attackerData.inPvpCombat()){
+                if(wc.getPvPPunishLogout() && attackerData.siegeData==null){
+                    GriefPrevention.sendMessage(attacker,TextMode.Warn, Messages.PvPPunishAttackerWarning, defender.getName());
+                    PvPSafePlayerTask.RunningTasks.add(new PvPSafePlayerTask(attacker,wc.getPvPCombatTimeoutSeconds()*5));
+                }
+            }
 			attackerData.lastPvpTimestamp = now;
 			attackerData.lastPvpPlayer = defender.getName();
+
 
 		}
 
@@ -361,8 +423,12 @@ class EntityEventHandler implements Listener {
 		// if theft protection is enabled
 		//
 			if (subEvent.getEntity() instanceof Creature) {
-
+                if(!(subEvent.getEntity() instanceof Villager) && wc.getCreatureDamage().Allowed(subEvent.getEntity(),attacker).Denied()){
+                    event.setCancelled(true);
+                    return;
+                }
 				Claim cachedClaim = null;
+
 				PlayerData playerData = null;
 				if (attacker != null) {
 					playerData = this.getDataStore().getPlayerData(attacker.getName());
@@ -562,167 +628,172 @@ class EntityEventHandler implements Listener {
 	}
 
     private Set<Entity> HandledEntities = new HashSet<Entity>();
-	@EventHandler(ignoreCancelled = true, priority = EventPriority.LOWEST)
-	public void onEntityExplode(EntityExplodeEvent explodeEvent) {
+	@EventHandler(ignoreCancelled = true, priority = EventPriority.NORMAL)
+    public void onEntityExplode(EntityExplodeEvent explodeEvent) {
 
 
 
-		// System.out.println("EntityExplode:" +
-		// explodeEvent.getEntity().getClass().getName());
-		List<Block> blocks = explodeEvent.blockList();
-		Location location = explodeEvent.getLocation();
-		WorldConfig wc = GriefPrevention.instance.getWorldCfg(location.getWorld());
-		if (!wc.Enabled())
-			return;
-		Claim claimatEntity = GriefPrevention.instance.dataStore.getClaimAt(location, true);
-		// quickest exit: if we are inside a claim and allowExplosions is false,
-		// break.
-		// if(claimatEntity!=null && claimatEntity.areExplosivesAllowed) return;
+        // System.out.println("EntityExplode:" +
+        // explodeEvent.getEntity().getClass().getName());
+        List<Block> blocks = explodeEvent.blockList();
+        Location location = explodeEvent.getLocation();
+        WorldConfig wc = GriefPrevention.instance.getWorldCfg(location.getWorld());
+        if (!wc.Enabled())
+            return;
+        Claim claimatEntity = GriefPrevention.instance.dataStore.getClaimAt(location, true);
+        // quickest exit: if we are inside a claim and allowExplosions is false,
+        // break.
+        // if(claimatEntity!=null && claimatEntity.areExplosivesAllowed) return;
 
-		// logic: we have Creeper and TNT Explosions currently. each one has
-		// special configuration options.
-		// make sure that we are allowed to explode, first.
-		Entity explodingEntity = explodeEvent.getEntity();
+        // logic: we have Creeper and TNT Explosions currently. each one has
+        // special configuration options.
+        // make sure that we are allowed to explode, first.
+        Entity explodingEntity = explodeEvent.getEntity();
 
 
-		boolean isCreeper = explodingEntity != null && explodingEntity instanceof Creeper;
-		boolean isTNT = explodingEntity != null && (explodingEntity instanceof TNTPrimed || explodingEntity instanceof ExplosiveMinecart);
+        boolean isCreeper = explodingEntity != null && explodingEntity instanceof Creeper;
+        boolean isTNT = explodingEntity != null && (explodingEntity instanceof TNTPrimed || explodingEntity instanceof ExplosiveMinecart);
 
-		boolean isWither = explodingEntity != null && (explodingEntity instanceof WitherSkull || explodingEntity instanceof Wither);
+        boolean isWither = explodingEntity != null && (explodingEntity instanceof WitherSkull || explodingEntity instanceof Wither);
+        boolean isEnderDragon = explodingEntity !=null && (explodingEntity instanceof EnderDragon || explodingEntity instanceof EnderDragonPart);
+        ClaimBehaviourData preExplodeCheck = null;
 
-		ClaimBehaviourData preExplodeCheck = null;
+        if (isCreeper) {
+            preExplodeCheck = wc.getCreeperExplosionBehaviour();
+        } else if (isWither)
+            preExplodeCheck = wc.getWitherExplosionBehaviour();
+        else if (isTNT)
+            preExplodeCheck = wc.getTNTExplosionBehaviour();
+        else if(isEnderDragon)
+            preExplodeCheck = wc.getEnderDragonDamageBehaviour();
+        else
+            preExplodeCheck = wc.getOtherExplosionBehaviour();
 
-		if (isCreeper) {
-			preExplodeCheck = wc.getCreeperExplosionBehaviour();
-		} else if (isWither)
-			preExplodeCheck = wc.getWitherExplosionBehaviour();
-		else if (isTNT)
-			preExplodeCheck = wc.getTNTExplosionBehaviour();
-		else
-			preExplodeCheck = wc.getOtherExplosionBehaviour();
+        if (preExplodeCheck.Allowed(explodeEvent.getLocation(), null).Denied()) {
+            //Debugger.Write("Explosion cancelled.", DebugLevel.Verbose);
+            explodeEvent.setCancelled(true);
+            explodeEvent.blockList().clear();
+            return;
+        }
 
-		if (preExplodeCheck.Allowed(explodeEvent.getLocation(), null).Denied()) {
-			//Debugger.Write("Explosion cancelled.", DebugLevel.Verbose);
-			explodeEvent.setCancelled(true);
-			return;
-		}
+        ClaimBehaviourData usebehaviour = null;
+        if (isCreeper)
+            usebehaviour = wc.getCreeperExplosionBlockDamageBehaviour();
+        else if (isWither)
+            usebehaviour = wc.getWitherExplosionBlockDamageBehaviour();
+        else if(isEnderDragon)
+            usebehaviour = wc.getEnderDragonDamageBlocksBehaviour();
+        else if (isTNT){
+            usebehaviour = wc.getTNTExplosionBlockDamageBehaviour();
 
-		ClaimBehaviourData usebehaviour = null;
-		if (isCreeper)
-			usebehaviour = wc.getCreeperExplosionBlockDamageBehaviour();
-		else if (isWither)
-			usebehaviour = wc.getWitherExplosionBlockDamageBehaviour();
-		else if (isTNT){
-			usebehaviour = wc.getTNTExplosionBlockDamageBehaviour();
-            /*if(wc.getTNTCoalesceBehaviour().Allowed(explodeEvent.getLocation(), null).Allowed()
-                    && ! HandledEntities.contains(explodeEvent.getEntity())
-                    ){
-                  //try to coalesce nearby TNTPrimed Entities.
-                 //count nearby TNTPrimed and add 25% more power for each.
-                //we only do this if the entity being kerploded isn't a "handled" entity.
+        }
+        else
+            usebehaviour = wc.getOtherExplosionBlockDamageBehaviour();
 
-                 float powerfactor = this.getCoalescedPower(explodeEvent.getEntity(),5,true);
-                 //generate a new TNTPrimed with a lower fuse time in this position, and set it to have a higher yield.
-                TNTPrimed newTNT = (TNTPrimed)(explodeEvent.getEntity().getWorld().spawnEntity(explodeEvent.getEntity().getLocation(),EntityType.PRIMED_TNT));
-                HandledEntities.add(newTNT);
-                newTNT.setFuseTicks(2);
-                float newYield= newTNT.getYield()*powerfactor;
-                newTNT.setYield(newYield);
 
-            } else if(HandledEntities.contains(explodeEvent.getEntity())){
-                HandledEntities.remove(explodeEvent.getEntity());
-            } */
-		}
-		else
-			usebehaviour = wc.getOtherExplosionBlockDamageBehaviour();
-		Claim claimpos = GriefPrevention.instance.dataStore.getClaimAt(explodeEvent.getLocation(),true);
-		// //go through each block that was affected...
-		for (int i = 0; i < blocks.size(); i++) {
+        Claim claimpos = GriefPrevention.instance.dataStore.getClaimAt(explodeEvent.getLocation(),true);
+        // //go through each block that was affected...
+        for (int i = 0; i < blocks.size(); i++)
+        {
 
 
 
-			Block block = blocks.get(i);
+            Block block = blocks.get(i);
             Claim explodepos = GriefPrevention.instance.dataStore.getClaimAt(block.getLocation(),false);
+            if((explodepos!=null) && block.getState() instanceof InventoryHolder){
+                //System.out.println("Remove InventoryHolder item from explosion.");
+                blocks.remove(i--);
+                continue;
+            }
+
+
             if(explodepos!=null && explodepos.siegeData!=null){
                 //under siege...
+                Debugger.Write("Explosion Block in claim under siege.", Debugger.DebugLevel.Verbose);
+                float gotpower=0;
+                //-1 is returned if it is not in that list.
+                if((i>0) && (-1==(gotpower=SiegeableData.getListPower(wc.getTNTSiegeBlocks(),block.getType())) ||
+                        (gotpower > explodeEvent.getYield()))){
+                    Debugger.Write("cancelling:" + block.getType().name() + "Power=" + gotpower + " Yield:" + explodeEvent.getYield() + " i=" + i, Debugger.DebugLevel.Verbose);
+                    //getListPower will return the power of the specified Material, or -1 if the material is
+                    //not in the list. if it's not in the list, remove it; if the retrieved power is greater than the explosion events
+                    //explosion yield, remove it.
 
-
-                if(!wc.getSiegeBlockRevert()){
-                    float gotpower;
-                    if(-1==(gotpower=SiegeableData.getListPower(wc.getTNTSiegeBlocks(),block.getType())) &&
-                    (gotpower < explodeEvent.getYield())){
-                       blocks.remove(i--);
-                    }
-                }
-                else {
-
+                    //remove it.
+                    blocks.remove(i--);
                     String usekey = GriefPrevention.getfriendlyLocationString(block.getLocation());
                     // if it already contains an entry, the block was broken
                     // during this siege
                     // and replaced with another block that is being broken
                     // again.
                     if (explodepos.siegeData.SiegedBlocks.containsKey(usekey)) {
-
                     } else {
                         // otherwise, we have to add it to the siege blocks
                         // list.
                         explodepos.siegeData.SiegedBlocks.put(usekey, new BrokenBlockInfo(block.getLocation()));
                         // replace it manually
                         block.setType(Material.AIR);
-
-
-
                     }
+                    continue;
 
 
                 }
-                }
 
-			// if(wc.getModsExplodableIds().contains(new
-			// MaterialInfo(block.getTypeId(), block.getData(), null)))
-			// continue;
-			if (block.getX() == explodeEvent.getLocation().getBlockX() && block.getY() == explodeEvent.getLocation().getBlockY() && block.getZ() == explodeEvent.getLocation().getBlockZ())
-				continue;
-			// creative rules stop all explosions, regardless of the other
-			// settings.
-			if (wc.getDenyAllExplosions() || (usebehaviour != null && usebehaviour.Allowed(block.getLocation(), null).Denied())) {
-				// if not allowed. remove it...
-				blocks.remove(i--);
-			} else {
-				// it is allowed, however, if it is on a claim only allow if
-				// explosions are enabled for that claim.
-				claimpos = GriefPrevention.instance.dataStore.getClaimAt(block.getLocation(), false);
-				if (claimpos != null && !claimpos.areExplosivesAllowed) {
-					blocks.remove(i--);
-				} else if (block.getType() == Material.LOG) {
-					GriefPrevention.instance.handleLogBroken(block);
-				}
 
-			}
-
-		}
-        //now, check if we are in a claim, if so and if that claim is under siege, add all blocks still in the blocks list to
-        //the revert list of that claim.
-        if(claimpos!=null){
-            if(claimpos.siegeData!=null){
-                //claim is under siege.
-                if(wc.getSiegeBlockRevert()){
-                    for(Block iterate:blocks){
-                        String usekey = GriefPrevention.getfriendlyLocationString(iterate.getLocation());
-                        claimpos.siegeData.SiegedBlocks.put(usekey, new BrokenBlockInfo(iterate.getLocation()));
-                    }
-                }
 
 
             }
-        }
-	}
 
+            // if(wc.getModsExplodableIds().contains(new
+            // MaterialInfo(block.getTypeId(), block.getData(), null)))
+            // continue;
+            if (explodeEvent.getEntity()==null && block.getX() == explodeEvent.getLocation().getBlockX() && block.getY() == explodeEvent.getLocation().getBlockY() && block.getZ() == explodeEvent.getLocation().getBlockZ())
+            {
+
+                continue;
+
+            }
+            // creative rules stop all explosions, regardless of the other
+            // settings.
+            if (wc.getDenyAllExplosions() || (usebehaviour != null && usebehaviour.Allowed(block.getLocation(), null).Denied())) {
+                // if not allowed. remove it...
+                blocks.remove(i--);
+                continue;
+            } else {
+                // it is allowed, however, if it is on a claim only allow if
+                // explosions are enabled for that claim.
+                claimpos = GriefPrevention.instance.dataStore.getClaimAt(block.getLocation(), false);
+                if ( i>0 && claimpos != null && !claimpos.areExplosivesAllowed) {
+                    blocks.remove(i--);
+                } else if (block.getType() == Material.LOG) {
+                    GriefPrevention.instance.handleLogBroken(block);
+                }
+
+            }
+
+
+            //now, check if we are in a claim, if so and if that claim is under siege, add all blocks still in the blocks list to
+            //the revert list of that claim.
+            if(claimpos!=null){
+                if(claimpos.siegeData!=null){
+                    //claim is under siege.
+                    if(wc.getSiegeBlockRevert()){
+                        for(Block iterate:blocks){
+                            String usekey = GriefPrevention.getfriendlyLocationString(iterate.getLocation());
+                            claimpos.siegeData.SiegedBlocks.put(usekey, new BrokenBlockInfo(iterate.getLocation()));
+                        }
+                    }
+
+
+                }
+            }
+        }
+    }
 	// don't allow entities to trample crops
 	/**
 	 * @param event
 	 */
-	@EventHandler(ignoreCancelled = true, priority = EventPriority.LOWEST)
+	@EventHandler(ignoreCancelled = true, priority = EventPriority.NORMAL)
 	public void onEntityInteract(EntityInteractEvent event) {
         Debugger.Write("onEntityInteract, instance:" + event.getEntity().getClass().getName(), Debugger.DebugLevel.Verbose);
 		WorldConfig wc = GriefPrevention.instance.getWorldCfg(event.getEntity().getWorld());
@@ -813,7 +884,7 @@ class EntityEventHandler implements Listener {
 	}
 
 	// when an entity picks up an item
-	@EventHandler(priority = EventPriority.LOWEST)
+	@EventHandler(priority = EventPriority.NORMAL)
 	public void onEntityPickup(EntityChangeBlockEvent event) {
 		// FEATURE: endermen don't steal claimed blocks
 		WorldConfig wc = GriefPrevention.instance.getWorldCfg(event.getEntity().getWorld());
@@ -829,7 +900,7 @@ class EntityEventHandler implements Listener {
 	}
 
 	// when a creature spawns...
-	@EventHandler(priority = EventPriority.LOWEST)
+	@EventHandler(priority = EventPriority.NORMAL)
 	public void onEntitySpawn(CreatureSpawnEvent event) {
 
 		LivingEntity entity = event.getEntity();
@@ -895,7 +966,7 @@ class EntityEventHandler implements Listener {
 	}
 
 	// when an experience bottle explodes...
-	@EventHandler(priority = EventPriority.LOWEST)
+	@EventHandler(priority = EventPriority.NORMAL)
 	public void onExpBottle(ExpBottleEvent event) {
 		WorldConfig wc = GriefPrevention.instance.getWorldCfg(event.getEntity().getWorld());
 		if (!wc.Enabled())
@@ -908,7 +979,7 @@ class EntityEventHandler implements Listener {
 	}
 
 	// when a painting is broken
-	@EventHandler(ignoreCancelled = true, priority = EventPriority.LOWEST)
+	@EventHandler(ignoreCancelled = true, priority = EventPriority.NORMAL)
 	public void onHangingBreak(HangingBreakEvent event) {
 		// FEATURE: claimed paintings are protected from breakage
         Debugger.Write("onHangingBreak", Debugger.DebugLevel.Verbose);
@@ -926,6 +997,9 @@ class EntityEventHandler implements Listener {
 
 		// who is removing it?
 		Entity remover = entityEvent.getRemover();
+
+
+
 
 		// again, making sure the breaker is a player
 		if (!(remover instanceof Player)) {
@@ -945,7 +1019,7 @@ class EntityEventHandler implements Listener {
 	/*
 	 * //when an entity explodes...
 	 * 
-	 * @EventHandler(ignoreCancelled = true, priority = EventPriority.LOWEST)
+	 * @EventHandler(ignoreCancelled = true, priority = EventPriority.NORMAL)
 	 * public void onEntityExplode(EntityExplodeEvent explodeEvent) {
 	 * 
 	 * List<Block> blocks = explodeEvent.blockList(); Location location =
@@ -1019,7 +1093,7 @@ class EntityEventHandler implements Listener {
 	 * GriefPrevention.instance.handleLogBroken(block); } } }
 	 */
 	// when an item spawns...
-	@EventHandler(priority = EventPriority.LOWEST)
+	@EventHandler(priority = EventPriority.NORMAL)
 	public void onItemSpawn(ItemSpawnEvent event) {
 		// precheck: always allow Droppers to drop items when triggered.
 		// We do this by seeing of there is a Dropper within a few blocks of the
@@ -1067,17 +1141,35 @@ class EntityEventHandler implements Listener {
 			}
 		}
 	}
-
+    private Location getAffectedLocation(HangingPlaceEvent ev){
+        if(ev.getBlock()==null) return null;
+        Location uselocation = ev.getBlock().getLocation();
+        BlockFace bf = ev.getBlockFace();
+        int xoffset=bf.getModX(),yoffset=bf.getModY(),zoffset=bf.getModZ();
+        //south: Z+ North Z-
+        //east: X+ West X-
+        //Up: Y+ Down Y-
+        return new Location(ev.getBlock().getWorld(),uselocation.getX()+xoffset,uselocation.getY()+yoffset,uselocation.getZ()+zoffset);
+    }
 	// when a painting is placed...
-	@EventHandler(ignoreCancelled = true, priority = EventPriority.LOWEST)
+	@EventHandler(ignoreCancelled = true, priority = EventPriority.NORMAL)
 	public void onPaintingPlace(HangingPlaceEvent event) {
 		// FEATURE: similar to above, placing a painting requires build
 		// permission in the claim
-		WorldConfig wc = GriefPrevention.instance.getWorldCfg(event.getEntity().getWorld());
+        WorldConfig wc=  GriefPrevention.instance.getWorldCfg(event.getEntity().getWorld());
+        Location placedpos = getAffectedLocation(event);
+
+
+        Debugger.Write("onpaintingPlace:" + event.getEntity().getClass().getName(),Debugger.DebugLevel.Verbose);
+
+
+
+
 		if (!wc.Enabled())
 			return;
+
 		// if the player doesn't have permission, don't allow the placement
-		String noBuildReason = GriefPrevention.instance.allowBuild(event.getPlayer(), event.getEntity().getLocation());
+		String noBuildReason = GriefPrevention.instance.allowBuild(event.getPlayer(), placedpos);
 		if (noBuildReason != null) {
 			event.setCancelled(true);
 			GriefPrevention.sendMessage(event.getPlayer(), TextMode.Err, noBuildReason);
@@ -1085,9 +1177,9 @@ class EntityEventHandler implements Listener {
 		}
 
 		// otherwise, apply entity-count limitations for creative worlds
-		else if (GriefPrevention.instance.creativeRulesApply(event.getEntity().getLocation())) {
+		else if (GriefPrevention.instance.creativeRulesApply(placedpos)) {
 			PlayerData playerData = this.getDataStore().getPlayerData(event.getPlayer().getName());
-			Claim claim = this.getDataStore().getClaimAt(event.getBlock().getLocation(), false);
+			Claim claim = this.getDataStore().getClaimAt(placedpos, false);
 			if (claim == null)
 				return;
 
@@ -1107,7 +1199,7 @@ class EntityEventHandler implements Listener {
 	}
 
 	// when a vehicle is damaged
-	@EventHandler(ignoreCancelled = true, priority = EventPriority.LOWEST)
+	@EventHandler(ignoreCancelled = true, priority = EventPriority.NORMAL)
 	public void onVehicleDamage(VehicleDamageEvent event) {
 		
 		WorldConfig wc = GriefPrevention.instance.getWorldCfg(event.getVehicle().getWorld());
@@ -1115,7 +1207,7 @@ class EntityEventHandler implements Listener {
 		if (!wc.Enabled())
 			return;
 		// all of this is anti theft code
-                
+        Debugger.Write("Vehicle Damage, of " + event.getVehicle().getClass().getName(),Debugger.DebugLevel.Verbose);
 		// determine which player is attacking, if any
 		Player attacker = null;
 		Entity damageSource = event.getAttacker();
@@ -1132,6 +1224,12 @@ class EntityEventHandler implements Listener {
 				attacker = (Player) potion.getShooter();
 			}
 		}
+        else if(damageSource instanceof Fish){
+            Fish f = (Fish)damageSource;
+            if(f.getShooter() instanceof Player){
+                attacker = (Player) f.getShooter();
+            }
+        }
 		// if Damage source is unspecified and we allow environmental damage,
 		// don't cancel the event.
 		if(attacker==null && wc.getEnvironmentalVehicleDamage().Allowed(event.getVehicle().getLocation(), null,false).Denied()){
@@ -1153,7 +1251,7 @@ class EntityEventHandler implements Listener {
 	}
 
 	// don't allow zombies to break down doors
-	@EventHandler(ignoreCancelled = true, priority = EventPriority.LOWEST)
+	@EventHandler(ignoreCancelled = true, priority = EventPriority.NORMAL)
 	public void onZombieBreakDoor(EntityBreakDoorEvent event) {
 		WorldConfig wc = GriefPrevention.instance.getWorldCfg(event.getEntity().getWorld());
 		if (!wc.Enabled())

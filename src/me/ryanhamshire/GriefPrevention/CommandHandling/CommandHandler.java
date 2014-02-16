@@ -10,15 +10,28 @@ import me.ryanhamshire.GriefPrevention.GriefPrevention;
 import me.ryanhamshire.GriefPrevention.PlayerData;
 import me.ryanhamshire.GriefPrevention.Configuration.WorldConfig;
 
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.entity.Player;
+import org.bukkit.plugin.java.JavaPlugin;
 //import java.util.Calendar;
 
 public class CommandHandler implements CommandExecutor {
+
+
+    public boolean isCommandEnabled(Class commandclass){
+        for(GriefPreventionCommand gpc:GPCommands)
+        {
+            if(gpc.getClass().equals(commandclass)){
+                return true;
+            }
+        }
+        return false;
+    }
 
 	/**
 	 * transfers a number of claim blocks from a source player to a target
@@ -86,14 +99,40 @@ public class CommandHandler implements CommandExecutor {
         GPCommands.add(new CleanClaimsCommand());
         GPCommands.add(new IgnoreCommand());
         GPCommands.add(new SoftMuteCommand());
+        GPCommands.add(new ViewBook());
+
 		for (GriefPreventionCommand iterate : GPCommands) {
 			String[] gotlabels = iterate.getLabels();
 			if (gotlabels == null) {
 				System.out.println("ERROR: GriefPrevention command named " + iterate.getClass().getName() + " returned null for labels!");
 				continue;
 			}
+            boolean isDisabled=false;
+            for(String testdisabledcmd : gotlabels){
+                for(String disabledcmd:GriefPrevention.instance.Configuration.getDisabledGPCommands())  {
+                    if(disabledcmd.equalsIgnoreCase(testdisabledcmd)) {
+                        isDisabled=true;
+                        break;
+                    }
+                }
+                if(isDisabled) break;
+            }
+            if(isDisabled) {
+                GriefPrevention.AddLogEntry("GP is disabling Command class " + iterate.getClass().getName());
+                continue;
+            }
+
 			for (String addcmd : gotlabels) {
-				PluginCommand pc = GriefPrevention.instance.getCommand(addcmd);
+
+                PluginCommand existingOwner = Bukkit.getPluginCommand(addcmd);
+                    if(existingOwner!=null){
+                        JavaPlugin p = (JavaPlugin)existingOwner.getPlugin();
+                        if(p!=GriefPrevention.instance){
+                          GriefPrevention.AddLogEntry("Could not add Command /" + addcmd + " Command already handled by \"" + p.getName() + "\"");
+                          continue;
+                        }
+                    }
+                PluginCommand pc = GriefPrevention.instance.getCommand(addcmd);
 				try {
 					Debugger.Write("Attaching Command \"" + addcmd + "\" to command class " + iterate.getClass().getName(), DebugLevel.Informational);
 					pc.setExecutor(iterate);

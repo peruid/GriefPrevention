@@ -22,6 +22,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -76,6 +77,17 @@ import org.bukkit.plugin.java.JavaPlugin;
 //import com.gmail.nossr50.mcMMO;
 
 public class GriefPrevention extends JavaPlugin {
+    public enum MinecraftVersions
+    {
+        MC125,
+        MC13,
+        MC14,
+        MC15,
+        MC16,
+        MC17
+
+
+    }
 	private class RecursiveCopyResult {
 		public int DirCount;
 		public int FileCount;
@@ -125,7 +137,8 @@ public class GriefPrevention extends JavaPlugin {
 	 *         depicting the approximate given location.
 	 */
 	public static String getfriendlyLocationString(Location location) {
-		return location.getWorld().getName() + "(" + location.getBlockX() + "," + location.getBlockY() + "," + location.getBlockZ() + ")";
+		if(location==null) return "null";
+        return location.getWorld().getName() + "(" + location.getBlockX() + "," + location.getBlockY() + "," + location.getBlockZ() + ")";
 	}
 
 	// ensures a piece of the managed world is loaded into server memory
@@ -262,6 +275,7 @@ public class GriefPrevention extends JavaPlugin {
 	private MovementWatcher moveWatcher = null;
 
 	public RegExTestHelper OreBlockRegexHelper;
+
 	public WorldWatcher ww = new WorldWatcher();
     public String allowBreak(Player player,Location location){
         return allowBreak(player,location,true);
@@ -488,7 +502,7 @@ public class GriefPrevention extends JavaPlugin {
 		if (forEntity instanceof Chicken) {
 			return new Material[] { Material.SEEDS };
 		} else if (forEntity instanceof Pig) {
-			return new Material[] { Material.CARROT };
+			return new Material[] { Material.CARROT_ITEM };
 		} else if (forEntity instanceof Sheep || forEntity instanceof Cow || forEntity instanceof MushroomCow) {
 			return new Material[] { Material.WHEAT };
 		} else if (forEntity instanceof Horse) {
@@ -597,7 +611,7 @@ public class GriefPrevention extends JavaPlugin {
 	 * @param world
 	 *            World to retrieve configuration for.
 	 * @return WorldConfig representing the configuration of the given world.
-	 * @see getWorldCfg
+	 *
 	 */
 	public WorldConfig getWorldCfg(World world) {
 		return Configuration.getWorldConfig(world);
@@ -607,7 +621,7 @@ public class GriefPrevention extends JavaPlugin {
 	void handleLogBroken(Block block) {
 		// find the lowest log in the tree trunk including this log
 		Block rootBlock = this.getRootBlock(block);
-
+        WorldConfig wc = GriefPrevention.instance.getWorldCfg(block.getWorld());
 		// null indicates this block isn't part of a tree trunk
 		if (rootBlock == null)
 			return;
@@ -720,8 +734,8 @@ public class GriefPrevention extends JavaPlugin {
 			// of this tree hanging in the air
 			TreeCleanupTask cleanupTask = new TreeCleanupTask(block, rootBlock, treeBlocks, rootBlock.getData());
 
-			// 20L ~ 1 second, so 2 mins = 120 seconds ~ 2400L
-			GriefPrevention.instance.getServer().getScheduler().scheduleSyncDelayedTask(GriefPrevention.instance, cleanupTask, 2400L);
+
+			GriefPrevention.instance.getServer().getScheduler().scheduleSyncDelayedTask(GriefPrevention.instance, cleanupTask, wc.getTreeCleanupDelay());
 		}
 	}
 
@@ -784,8 +798,8 @@ public class GriefPrevention extends JavaPlugin {
 
 		// cancel ALL pending tasks.
 		Bukkit.getScheduler().cancelTasks(this);
-
-		
+        ClaimTask = null;
+		GriefPrevention.AddLogEntry("GriefPrevention is being Disabled.");
 		if(dataStore!=null) this.dataStore.saveClaimData();
 
 		GPUnloadEvent uevent = new GPUnloadEvent(this);
@@ -798,13 +812,16 @@ public class GriefPrevention extends JavaPlugin {
                 Player player = players[i];
                 String playerName = player.getName();
                 PlayerData playerData = this.dataStore.getPlayerData(playerName);
+                Debugger.Write("Saving Player Data for Player:" + playerName,DebugLevel.Verbose);
                 this.dataStore.savePlayerData(playerName, playerData);
             }
             if(ww!=null){
               for (World iterate : Bukkit.getWorlds()) {
+                  Debugger.Write("Unloading World:" + iterate.getName(),DebugLevel.Verbose);
                   ww.WorldUnload(new WorldUnloadEvent(iterate));
               }
             }
+
             this.dataStore.close();
             dataStore=null;
         }
@@ -816,7 +833,7 @@ public class GriefPrevention extends JavaPlugin {
 
         ww.clear();
         dataStore = null;
-
+        ClaimTask=null;
         this.cmdHandler = null;
         AddLogEntry("GriefPrevention disabled.");
 	}
@@ -826,8 +843,8 @@ public class GriefPrevention extends JavaPlugin {
 	public void onEnable() {
 		instance = this;
 		AddLogEntry("Grief Prevention enabled.");
+        AddLogEntry("Grief Prevention Running for " + getMinecraftVersionString());
 
-		cmdHandler = new CommandHandler();
 		// if the old data folder exists and the new one doesn't...
 		File oldData = new File(DataStore.oldDataLayerFolderPath);
 		File newData = new File(DataStore.dataLayerFolderPath);
@@ -953,7 +970,8 @@ public class GriefPrevention extends JavaPlugin {
 						exx.printStackTrace();
 					}
 				}
-				if (FlatFileDataStore.hasData() && databaseStore != null) {
+                boolean allowmigrate = Configuration.getAllowAutomaticMigration();
+				if (FlatFileDataStore.hasData() && databaseStore != null && allowmigrate) {
 					GriefPrevention.AddLogEntry("There appears to be some data on the hard drive.  Migrating that data to the database...");
 					FlatFileDataStore flatFileStore = new FlatFileDataStore();
 					flatFileStore.migrateData(databaseStore);
@@ -961,6 +979,9 @@ public class GriefPrevention extends JavaPlugin {
 					databaseStore.close();
 					databaseStore = new DatabaseDataStore(DataSettings, DataSettings);
 				}
+                else if(!allowmigrate){
+                    GriefPrevention.AddLogEntry("Flat File data detected. This data will NOT be migrated, because GriefPrevention.AllowAutomaticMigration is set to false.");
+                }
 
 				this.dataStore = databaseStore;
 			} catch (Exception e) {
@@ -977,7 +998,8 @@ public class GriefPrevention extends JavaPlugin {
 				GriefPrevention.AddLogEntry(e.getMessage());
 			}
 		}
-
+        //start the command handler.
+        cmdHandler = new CommandHandler();
 		// start the recurring cleanup event for entities in creative worlds, if enabled.
 
 		// start recurring cleanup scan for unused claims belonging to inactive players
@@ -1052,18 +1074,15 @@ public class GriefPrevention extends JavaPlugin {
 		MetaHandler = new ClaimMetaHandler();
 		try {
 			// new File(DataStore.configFilePath).delete();
-			outConfig.save(new File(DataStore.configFilePath).getAbsolutePath());
+			outConfig.save(new File(DataStore.configFilePath));
 		} catch (IOException exx) {
 			GriefPrevention.log.log(Level.SEVERE, "Failed to save primary configuration file:" + DataStore.configFilePath);
 		}
 
 		// go through all available worlds, and fire a "world load" event for
 		// them.
-        Debugger.Write("Looking Through " + Bukkit.getWorlds().size() + " Worlds, reloading Claim Data.",DebugLevel.Verbose);
-		for (World iterate : Bukkit.getWorlds()) {
-			WorldLoadEvent wle = new WorldLoadEvent(iterate);
-			ww.WorldLoad(wle);
-		}
+        ww.Refresh();
+
 
 		Bukkit.getPluginManager().callEvent(new GPLoadEvent(this));
 
@@ -1083,6 +1102,13 @@ public class GriefPrevention extends JavaPlugin {
 			// null value returned indicates an error parsing the string from
 			// the config file
 			if (materialInfo == null) {
+				// ignore and remove null entries
+				if(stringsToParse.get(i) == null){
+				    stringsToParse.remove(i);
+				    i -= 1;
+				    continue;
+				}
+				
 				// show error in log
 				GriefPrevention.AddLogEntry("ERROR: Unable to read a material entry from the config file.  Please update your config.yml.");
 
@@ -1169,6 +1195,7 @@ public class GriefPrevention extends JavaPlugin {
 
 	// helper method to resolve a player by name
 	public OfflinePlayer resolvePlayer(String name) {
+        name = name.toLowerCase();
 		// try online players first
 		Player player = this.getServer().getPlayer(name);
 		if (player != null)
@@ -1242,5 +1269,78 @@ public class GriefPrevention extends JavaPlugin {
 	public boolean siegeEnabledForWorld(World world) {
 		return this.getWorldCfg(world).getSiegeEnabled();
 	}
+    public static String getMinecraftVersionString(){
+        switch (getMCVersion()) {
+            case MC125:
+                return "Minecraft 1.2.x";
+            case MC13:
+                return "Minecraft 1.3.x";
+            case MC14:
+                return "Minecraft 1.4.x";
 
+            case MC15:
+                return "Minecraft 1.5.x";
+
+            case MC16:
+                return "Minecraft 1.6.x";
+
+            case MC17:
+                return "Minecraft 1.7.x";
+
+            default:
+                return "Unknown Version";
+        }
+
+    }
+    public static MinecraftVersions getMCVersion(){
+        //go down the list.
+        MinecraftVersions[] testversions = MinecraftVersions.values();
+        //start from the last element and move towards the first...
+        //the first one to not fail is the running version.
+        for(int i=testversions.length-1;i>0;i--){
+            if(isMCVersionorLater(testversions[i])) return testversions[i];
+        }
+
+        return null; //let's hope THIS doesn't happen...
+    }
+    //static version helpers.
+    public static boolean isMCVersionorLater(MinecraftVersions VersionEnum){
+        //each version adds material fields, so we can inspect the Material
+        //enum using reflection.
+        String findMaterial=null;
+        switch (VersionEnum) {
+
+            case MC125:
+                //redstone lamp was added in 1.2.5.
+                findMaterial="REDSTONE_LAMP_ON";
+                break;
+            case MC13: //command blocks are new in 1.3.
+                findMaterial = "COMMAND";
+                break;
+            case MC14:
+                findMaterial = "ENCHANTED_BOOK"; //enchanted books added in 1.4
+                break;
+            case MC15:
+                findMaterial="REDSTONE_BLOCK";  //redstone blocks added in 1.5
+                break;
+            case MC16:
+                findMaterial="STAINED_CLAY";  //stained clay added in 1.6.
+                break;
+            case MC17:
+                findMaterial="STAINED_GLASS"; //stained glass is new in 1.7.
+                break;
+        }
+        //if we catch a FieldNotFoundException, than we are NOT that version or later.
+        try {
+
+             Field acquired = Material.class.getField(findMaterial);
+            return true; //no exception, so the field exists. we are that version or later.
+        }
+        catch(NoSuchFieldException fnf){
+            //field not found- we are not that version or later.
+            return false;
+        }
+
+
+    }
 }

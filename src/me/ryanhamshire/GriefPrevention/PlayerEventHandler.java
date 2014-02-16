@@ -22,13 +22,17 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import me.ryanhamshire.GriefPrevention.CommandHandling.IgnoreCommand;
+import me.ryanhamshire.GriefPrevention.CommandHandling.ViewBook;
 import me.ryanhamshire.GriefPrevention.Debugger.DebugLevel;
 import me.ryanhamshire.GriefPrevention.Configuration.ClaimBehaviourData;
 import me.ryanhamshire.GriefPrevention.Configuration.ClaimBehaviourData.ClaimAllowanceConstants;
 import me.ryanhamshire.GriefPrevention.Configuration.ItemUsageRules;
 import me.ryanhamshire.GriefPrevention.Configuration.WorldConfig;
 import me.ryanhamshire.GriefPrevention.tasks.EquipShovelProcessingTask;
+import me.ryanhamshire.GriefPrevention.tasks.PermCheckTask;
 import me.ryanhamshire.GriefPrevention.tasks.PlayerKickBanTask;
+import me.ryanhamshire.GriefPrevention.tasks.PvPSafePlayerTask;
 import me.ryanhamshire.GriefPrevention.visualization.Visualization;
 import me.ryanhamshire.GriefPrevention.visualization.VisualizationType;
 
@@ -50,27 +54,14 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.entity.PlayerDeathEvent;
-import org.bukkit.event.player.AsyncPlayerChatEvent;
-import org.bukkit.event.player.PlayerBedEnterEvent;
-import org.bukkit.event.player.PlayerBucketEmptyEvent;
-import org.bukkit.event.player.PlayerBucketFillEvent;
-import org.bukkit.event.player.PlayerCommandPreprocessEvent;
-import org.bukkit.event.player.PlayerDropItemEvent;
-import org.bukkit.event.player.PlayerEvent;
-import org.bukkit.event.player.PlayerInteractEntityEvent;
-import org.bukkit.event.player.PlayerInteractEvent;
-import org.bukkit.event.player.PlayerItemHeldEvent;
-import org.bukkit.event.player.PlayerJoinEvent;
-import org.bukkit.event.player.PlayerLoginEvent;
+import org.bukkit.event.entity.PlayerLeashEntityEvent;
+import org.bukkit.event.player.*;
 import org.bukkit.event.player.PlayerLoginEvent.Result;
-import org.bukkit.event.player.PlayerPickupItemEvent;
-import org.bukkit.event.player.PlayerQuitEvent;
-import org.bukkit.event.player.PlayerRespawnEvent;
-import org.bukkit.event.player.PlayerShearEntityEvent;
-import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.event.player.PlayerTeleportEvent.TeleportCause;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.PlayerInventory;
+import org.bukkit.inventory.meta.BookMeta;
 
 class PlayerEventHandler implements Listener {
 	private static HashSet<Material> ContainerMaterials = null;
@@ -114,6 +105,15 @@ class PlayerEventHandler implements Listener {
 			transparentMaterials.add(Byte.valueOf((byte) Material.LEVER.getId()));
 		}
 	}
+    private boolean checkPermission(Player p,String permission){
+        final Boolean permissionresult;
+        PermCheckTask pct = new PermCheckTask(p,permission);
+        Bukkit.getScheduler().runTask(GriefPrevention.instance,pct);
+        return pct.CheckResult;
+
+    }
+    String sIgnoreRegExp = "\\signore\\s|\\sban\\s|\\sshut up\\s|\\sbe quiet\\s|\\splease ban\\s|\\splease kick\\s";
+    Pattern IgnoreRegExp = Pattern.compile(sIgnoreRegExp);
 
 	// returns true if the message should be sent, false if it should be muted
 	private boolean handlePlayerChat(Player player, String message, PlayerEvent event) {
@@ -133,7 +133,7 @@ class PlayerEventHandler implements Listener {
 			this.howToClaimPattern = Pattern.compile(GriefPrevention.instance.dataStore.getMessage(Messages.HowToClaimRegex), Pattern.CASE_INSENSITIVE);
 		}
 		Messages showclaimmessage = null;
-		if (this.howToClaimPattern.matcher(message).matches()) {
+		if (this.howToClaimPattern.matcher(message).matches() && checkPermission(player,PermNodes.CreateClaimsShovelPermission)) {
 			if (GriefPrevention.instance.creativeRulesApply(player.getLocation())) {
 				showclaimmessage = Messages.CreativeBasicsDemoAdvertisement;
 
@@ -165,21 +165,24 @@ class PlayerEventHandler implements Listener {
 		}
 
 		//advertise the ignore command if the player says shut up or ban.
-        if(!message.contains("/ignore") && message.contains("ignore") || message.contains("ban") || message.contains("shut up")){
+        boolean Matchtest = IgnoreRegExp.matcher(message).find();
 
-            final PlayerData pdata = GriefPrevention.instance.dataStore.getPlayerData(player.getName());
-            if(!pdata.IgnoreIgnoreMessage){
-                pdata.IgnoreIgnoreMessage=true;
-                Bukkit.getScheduler().runTaskLater(GriefPrevention.instance, new Runnable() {
-                    public void run() {
-                        pdata.IgnoreIgnoreMessage = false;
-                    }
-                }, wc.getMessageCooldownIgnore() * 20);
+        if(!message.contains("/ignore") && Matchtest && GriefPrevention.instance.cmdHandler.isCommandEnabled(IgnoreCommand.class) && player.hasPermission(PermNodes.getCommandPermission("ignore")))
+            if(wc.getMessageCooldownIgnore()>-1){
+                final PlayerData pdata = GriefPrevention.instance.dataStore.getPlayerData(player.getName());
+                if(!pdata.IgnoreIgnoreMessage){
+                    pdata.IgnoreIgnoreMessage=true;
+                    Bukkit.getScheduler().runTaskLater(GriefPrevention.instance, new Runnable() {
+                        public void run() {
+                            pdata.IgnoreIgnoreMessage = false;
+                        }
+                    }, wc.getMessageCooldownIgnore() * 20);
 
-                GriefPrevention.sendMessage(player, TextMode.Info, Messages.IgnoreInstructions, 10L);
+                    GriefPrevention.sendMessage(player, TextMode.Info, Messages.IgnoreInstructions, 10L);
+                }
             }
 
-        }
+
 
 		// FEATURE: automatically educate players about the /trapped command
 		// check for "trapped" or "stuck" to educate players about the /trapped
@@ -187,22 +190,24 @@ class PlayerEventHandler implements Listener {
 
 
 		if (!message.contains("/trapped") && (message.contains("trapped") || message.contains("stuck") || message.contains(GriefPrevention.instance.dataStore.getMessage(Messages.TrappedChatKeyword)))) {
-			final PlayerData pdata = GriefPrevention.instance.dataStore.getPlayerData(player.getName());
-			// if not set to ignore the stuck message, show it, set the ignore
-			// flag, and set an anonymous runnable to reset it after the
-			// configured delay.
-			if (!pdata.IgnoreStuckMessage) {
+			if(checkPermission(player,PermNodes.getCommandPermission("trapped"))){
+                final PlayerData pdata = GriefPrevention.instance.dataStore.getPlayerData(player.getName());
+                // if not set to ignore the stuck message, show it, set the ignore
+                // flag, and set an anonymous runnable to reset it after the
+                // configured delay.
+                if (!pdata.IgnoreStuckMessage) {
 
-				pdata.IgnoreStuckMessage = true;
+                    pdata.IgnoreStuckMessage = true;
 
-				Bukkit.getScheduler().runTaskLater(GriefPrevention.instance, new Runnable() {
-					public void run() {
-						pdata.IgnoreStuckMessage = false;
-					}
-				}, wc.getMessageCooldownStuck() * 20);
+                    Bukkit.getScheduler().runTaskLater(GriefPrevention.instance, new Runnable() {
+                        public void run() {
+                            pdata.IgnoreStuckMessage = false;
+                        }
+                    }, wc.getMessageCooldownStuck() * 20);
 
-				GriefPrevention.sendMessage(player, TextMode.Info, Messages.TrappedInstructions, 10L);
-			}
+                    GriefPrevention.sendMessage(player, TextMode.Info, Messages.TrappedInstructions, 10L);
+                }
+            }
 		}
 
 		// FEATURE: monitor for chat and command spam
@@ -212,7 +217,7 @@ class PlayerEventHandler implements Listener {
 
 		// if the player has permission to spam, don't bother even examining the
 		// message
-		if (player.hasPermission(PermNodes.SpamPermission))
+		if (checkPermission(player,PermNodes.SpamPermission))
 			return false;
 
 		boolean spam = false;
@@ -222,15 +227,46 @@ class PlayerEventHandler implements Listener {
 
 		// remedy any CAPS SPAM, exception for very short messages which could
 		// be emoticons like =D or XD
-		if (message.length() > 4 && this.stringsAreSimilar(message.toUpperCase(), message)) {
+		if (!muted && message.length() > wc.getSpamCapsMinLength() && this.stringsAreSimilar(message.toUpperCase(), message)) {
 			// exception for strings containing forward slash to avoid changing
 			// a case-sensitive URL
 			if (event instanceof AsyncPlayerChatEvent && !message.contains("/")) {
 				((AsyncPlayerChatEvent) event).setMessage(message.toLowerCase());
 			}
 		}
+        if (!muted && message.length() > wc.getSpamCapsMinLength()) {
 
-		// where other types of spam are concerned, casing isn't significant
+            // check for caps in lengths greater than the specified limit.
+            StringBuilder sbuffer = new StringBuilder();
+            try {
+                for (int i = 0; i < message.length() - wc.getSpamCapsMinLength(); i++) {
+                    String teststr = "";
+                    try {
+                        teststr = message.substring(i, i + wc.getSpamCapsMinLength());
+                    } catch (StringIndexOutOfBoundsException exx) {
+                        // testing code for ticket 212
+                        // print out diagnostic info.
+                        exx.printStackTrace();
+                        System.out.println("Unexpected Error Processing Chat Command");
+                        System.out.println("Current Message:\"" + message + "\"");
+                        System.out.println("SpamCapsMinLength:" + wc.getSpamCapsMinLength());
+                        System.out.println("i:" + i);
+
+                    }
+                    if (teststr.equals(teststr.toUpperCase())) {
+                        // gotcha!
+                        sbuffer.append(teststr.toLowerCase());
+                        i += teststr.length();
+                    } else
+                        sbuffer.append(message.charAt(i));
+
+                }
+            } finally {
+            }
+
+        }
+
+        // where other types of spam are concerned, casing isn't significant
 		message = message.toLowerCase();
 
 		// check message content and timing
@@ -241,10 +277,12 @@ class PlayerEventHandler implements Listener {
 			// increment the spam counter
 			playerData.spamCount++;
 			spam = true;
+
 		}
 
 		// if it's very similar to the last message
 		if (!muted && this.stringsAreSimilar(message, playerData.lastMessage)) {
+            Debugger.Write("Blocking message, similar to last message.",DebugLevel.Verbose);
 			playerData.spamCount++;
 			spam = true;
 			muted = true;
@@ -252,7 +290,7 @@ class PlayerEventHandler implements Listener {
 
 		// filter IP addresses
 		if (!muted) {
-			Pattern ipAddressPattern = Pattern.compile("\\d{1,4}\\D{1,3}\\d{1,4}\\D{1,3}\\d{1,4}\\D{1,3}\\d{1,4}");
+			Pattern ipAddressPattern = Pattern.compile("((?:[0-9]{1,3}\\.){3}[0-9]{1,3})|[^\\s\\d]+\\.[^\\s\\d]+\\.[^\\s\\d]+");
 			Matcher matcher = ipAddressPattern.matcher(message);
 
 			// if it looks like an IP address
@@ -267,40 +305,10 @@ class PlayerEventHandler implements Listener {
 					spam = true;
 
 					// block message
+                    Debugger.Write("Blocking message for IP spam",DebugLevel.Verbose);
 					muted = true;
 				}
 			}
-		}
-		if (!muted && message.length() > wc.getSpamCapsMinLength()) {
-
-			// check for caps in lengths greater than the specified limit.
-			StringBuilder sbuffer = new StringBuilder();
-			try {
-				for (int i = 0; i < message.length() - wc.getSpamCapsMinLength(); i++) {
-					String teststr = "";
-					try {
-						teststr = message.substring(i, i + wc.getSpamCapsMinLength());
-					} catch (StringIndexOutOfBoundsException exx) {
-						// testing code for ticket 212
-						// print out diagnostic info.
-						exx.printStackTrace();
-						System.out.println("Unexpected Error Processing Chat Command");
-						System.out.println("Current Message:\"" + message + "\"");
-						System.out.println("SpamCapsMinLength:" + wc.getSpamCapsMinLength());
-						System.out.println("i:" + i);
-
-					}
-					if (teststr.equals(teststr.toUpperCase())) {
-						// gotcha!
-						sbuffer.append(teststr.toLowerCase());
-						i += teststr.length();
-					} else
-						sbuffer.append(message.charAt(i));
-
-				}
-			} finally {
-			}
-
 		}
 
 		// if the message was mostly non-alpha-numerics or doesn't include much
@@ -323,6 +331,7 @@ class PlayerEventHandler implements Listener {
 			if (symbolsCount > message.length() / 2 || (message.length() > wc.getSpamASCIIArtMinLength() && whitespaceCount < message.length() / 10)) {
 				spam = true;
 				if (playerData.spamCount > 0)
+                    Debugger.Write("Exceeded symbol or whitespace count.",DebugLevel.Verbose);
 					muted = true;
 				playerData.spamCount++;
 			}
@@ -341,7 +350,8 @@ class PlayerEventHandler implements Listener {
 				GriefPrevention.AddLogEntry("Banning " + player.getName() + " for spam.");
 
 				// kick
-				PlayerKickBanTask task = new PlayerKickBanTask(player, wc.getSpamKickMessage());
+				//PlayerKickBanTask task = new PlayerKickBanTask(player, wc.getSpamKickMessage());
+                PlayerKickBanTask task = new PlayerKickBanTask(player,null);
 				GriefPrevention.instance.getServer().getScheduler().scheduleSyncDelayedTask(GriefPrevention.instance, task, 1L);
 
 			}
@@ -456,7 +466,7 @@ class PlayerEventHandler implements Listener {
 	}
 
 	// block players from entering beds they don't have permission for
-	@EventHandler(ignoreCancelled = true, priority = EventPriority.LOWEST)
+	@EventHandler(ignoreCancelled = true, priority = EventPriority.NORMAL)
 	public void onPlayerBedEnter(PlayerBedEnterEvent bedEvent) {
 
 		Player player = bedEvent.getPlayer();
@@ -485,14 +495,14 @@ class PlayerEventHandler implements Listener {
 	}
 
 	// block use of buckets within other players' claims
-	@EventHandler(ignoreCancelled = true, priority = EventPriority.LOWEST)
+	@EventHandler(ignoreCancelled = true, priority = EventPriority.NORMAL)
 	public void onPlayerBucketEmpty(PlayerBucketEmptyEvent bucketEvent) {
 		Player player = bucketEvent.getPlayer();
 		Block block = bucketEvent.getBlockClicked().getRelative(bucketEvent.getBlockFace());
 		WorldConfig wc = GriefPrevention.instance.getWorldCfg(block.getWorld());
 		if (!wc.Enabled())
 			return;
-		int minLavaDistance = 10;
+		int minLavaDistance = wc.getMinLavaDistance();
 
 		if (bucketEvent.getBucket() == Material.LAVA_BUCKET) {
 			switch (wc.getLavaBucketEmptyBehaviour().Allowed(block.getLocation(), player)) {
@@ -599,7 +609,7 @@ class PlayerEventHandler implements Listener {
 	}
 
 	// see above
-	@EventHandler(ignoreCancelled = true, priority = EventPriority.LOWEST)
+	@EventHandler(ignoreCancelled = true, priority = EventPriority.NORMAL)
 	public void onPlayerBucketFill(PlayerBucketFillEvent bucketEvent) {
 		try {
 			Player player = bucketEvent.getPlayer();
@@ -637,7 +647,7 @@ class PlayerEventHandler implements Listener {
 	}
 
 	// when a player chats, monitor for spam
-	@EventHandler(ignoreCancelled = true, priority = EventPriority.LOWEST)
+	@EventHandler(ignoreCancelled = true, priority = EventPriority.MONITOR)
 	synchronized void onPlayerChat(AsyncPlayerChatEvent event) {
 
 		WorldConfig wc = GriefPrevention.instance.getWorldCfg(event.getPlayer().getWorld());
@@ -649,33 +659,38 @@ class PlayerEventHandler implements Listener {
 		}
         PlayerData pdata = GriefPrevention.instance.dataStore.getPlayerData(player.getName());
 
-        //remove any recipients that have this sender on their list.
+        //remove any recipients that have this sender on their list,
+        //unless this player has the GriefPrevention.Permission.NotIgnorable permission set.
+
         Set<Player> removeplayers = new HashSet<Player>();
-        for(Player iterate:event.getRecipients()){
+        if(!player.hasPermission(PermNodes.NotIgnorablePermission))
+        {
+            for(Player iterate:event.getRecipients()){
 
-            PlayerData recipientData = GriefPrevention.instance.dataStore.getPlayerData(iterate.getName());
-
-
-
-
-
-            if(recipientData.isIgnored(event.getPlayer())){
-                removeplayers.add(iterate);
-            }
-            else if(pdata.getSoftMute() && !recipientData.getSoftMute()){
-                //don't show messages if the player sending the message has SoftMute set, but the
-                //recipient does not. If they both do, the recipient will receive the message.
-                //if the recipient has the Eavesdrop perm, they see the message but it get's displayed. with [MUTED] in front.
-                //in order to do this we still cancel it but send them a message manually.
-
-                if(iterate.hasPermission(PermNodes.EavesDropMute)){
-
-                    iterate.sendMessage(ChatColor.BLUE + "[MUTED]" + ChatColor.RESET + "<" + player.getDisplayName() + ">" + event.getMessage());
+                PlayerData recipientData = GriefPrevention.instance.dataStore.getPlayerData(iterate.getName());
 
 
+
+
+
+                if(recipientData.isIgnored(event.getPlayer())){
+                    removeplayers.add(iterate);
                 }
+                else if(pdata.getSoftMute() && !recipientData.getSoftMute()){
+                    //don't show messages if the player sending the message has SoftMute set, but the
+                    //recipient does not. If they both do, the recipient will receive the message.
+                    //if the recipient has the Eavesdrop perm, they see the message but it get's displayed. with [MUTED] in front.
+                    //in order to do this we still cancel it but send them a message manually.
 
-                removeplayers.add(iterate);
+                    if(iterate.hasPermission(PermNodes.EavesDropMute)){
+
+                        iterate.sendMessage(ChatColor.BLUE + "[MUTED]" + ChatColor.RESET + "<" + player.getDisplayName() + ">" + event.getMessage());
+
+
+                    }
+
+                    removeplayers.add(iterate);
+                }
             }
         }
         for(Player removeit:removeplayers)  event.getRecipients().remove(removeit);
@@ -690,7 +705,7 @@ class PlayerEventHandler implements Listener {
 	private Map<String,String> BanLookups = new HashMap<String,String>();
 	
 	// when a player uses a slash command...
-	@EventHandler(ignoreCancelled = true, priority = EventPriority.LOWEST)
+	@EventHandler(ignoreCancelled = true, priority = EventPriority.NORMAL)
 	synchronized void onPlayerCommandPreprocess(PlayerCommandPreprocessEvent event) {
 
 		String[] args = event.getMessage().split(" ");
@@ -747,7 +762,7 @@ class PlayerEventHandler implements Listener {
 	}
 
 	// when a player dies...
-	@EventHandler(priority = EventPriority.LOWEST)
+	@EventHandler(priority = EventPriority.NORMAL)
 	void onPlayerDeath(PlayerDeathEvent event) {
 		WorldConfig wc = GriefPrevention.instance.getWorldCfg(event.getEntity().getWorld());
 		if (!wc.Enabled())
@@ -767,10 +782,14 @@ class PlayerEventHandler implements Listener {
 
 
 
-	private void onPlayerDisconnect(Player player, String notificationMessage) {
+	private void onPlayerDisconnect(final Player player, String notificationMessage) {
 		String playerName = player.getName();
+        PvPSafePlayerTask.ClearPlayerTasks(player);
+		final PlayerData playerData = GriefPrevention.instance.dataStore.getPlayerData(playerName);
+        final PlayerData lastPvPData = playerData.lastPvpPlayer==null?null:GriefPrevention.instance.dataStore.getPlayerData(playerData.lastPvpPlayer);
+        if(playerData.lastPvpPlayer!=null){
 
-		PlayerData playerData = GriefPrevention.instance.dataStore.getPlayerData(playerName);
+        }
 		WorldConfig wc = GriefPrevention.instance.getWorldCfg(player.getWorld());
 		if (!wc.Enabled())
 			return;
@@ -780,9 +799,57 @@ class PlayerEventHandler implements Listener {
 			claim.areExplosivesAllowed = false;
 		}
 
-		// FEATURE: players in pvp combat when they log out will die
+
+        //tweak: delay for 10 seconds before we perform this check...
 		if (wc.getPvPPunishLogout() && playerData.inPvpCombat()) {
-			player.setHealth(0);
+            final PlayerInventory dcedInventory = player.getInventory();
+            Debugger.Write("Disconnected player:" + player.getName() + " was in PVP Combat.",DebugLevel.Verbose);
+            Bukkit.getScheduler().runTaskLater(GriefPrevention.instance, new Runnable() {
+                  public void run(){
+                      Debugger.Write("Punishment Task, player:" + player.getName(),DebugLevel.Verbose);
+
+
+
+                      //if the last player this Player attacked is still online...
+                      Player lastplayer = lastPvPData==null?null:Bukkit.getPlayerExact(lastPvPData.playerName);
+                      OfflinePlayer thisPlayer = Bukkit.getOfflinePlayer(playerData.playerName);
+
+                      Debugger.Write("Logged player:" + player.getName() + " online:" + thisPlayer.isOnline(),DebugLevel.Verbose);
+                      if(lastplayer==null) Debugger.Write("No other player.",DebugLevel.Verbose);
+                      else Debugger.Write("other Player:" + lastplayer.getName(),DebugLevel.Verbose);
+                      Debugger.Write("lastplayer!=null && lastplayer.isOnline:" + (lastplayer!=null && lastplayer.isOnline()),DebugLevel.Verbose);
+                      Debugger.Write("!(thisPlayer==null || thisPlayer.isOnline())" + (!(thisPlayer==null || thisPlayer.isOnline())),DebugLevel.Verbose);
+                      if(lastplayer!=null && lastplayer.isOnline() && (thisPlayer==null || !thisPlayer.isOnline())){
+
+                          //make sure they didn't relog, either.
+                          //I'm fairly certain this won't drop their items, since they DC'd.
+                          //so we need to drop it manually.
+
+
+                          GriefPrevention.sendMessage(lastplayer,TextMode.Info,Messages.PvPLogAnnouncement,player.getName());
+
+                          for(ItemStack is:dcedInventory.getContents()){
+                              if(is!=null && !(is.getType() == Material.AIR)) lastplayer.getWorld().dropItemNaturally(lastplayer.getLocation(),is);
+                          }
+                          for(ItemStack is:dcedInventory.getArmorContents()){
+                              if(is!=null && !(is.getType() == Material.AIR)) lastplayer.getWorld().dropItemNaturally(lastplayer.getLocation(),is);
+                          }
+                          player.getInventory().clear();
+                          player.getInventory().setArmorContents(new ItemStack[]{null,null,null,null});
+                          //kill the disconnected player. They will have disconnected by this point, naturally.
+                          player.setHealth(0);
+
+                          playerData.ClearInventoryOnJoin=true;
+
+
+
+                      }
+                  }
+
+
+            },20*5);
+
+
 		}
 
 		// FEATURE: during a siege, any player who logs out dies and forfeits
@@ -790,9 +857,58 @@ class PlayerEventHandler implements Listener {
 
 		// if player was involved in a siege, he forfeits
 		if (playerData.siegeData != null) {
-			if (player.getHealth() > 0)
-				player.setHealth(0); // might already be zero from above, this
-										// avoids a double death message
+			if (player.getHealth() > 0){
+                // check current health to avoid doubled-up death message.
+                final PlayerInventory dcedInventory = player.getInventory();
+                final Player otherplayer=
+                        (playerData.siegeData.attacker==player)?playerData.siegeData.defender:playerData.siegeData.attacker;
+
+                for(Claim clearclaim:playerData.siegeData.claims){
+                    clearclaim.siegeData=null;
+                }
+
+                GriefPrevention.instance.dataStore.endSiege(playerData.siegeData,otherplayer.getName(),player.getName(),false,false);
+
+
+
+                Bukkit.getScheduler().runTaskLater(GriefPrevention.instance, new Runnable() {
+                    public void run(){
+                        Debugger.Write("Siege Disconnect Timer, player:" + player.getName(),DebugLevel.Informational);
+                        //get other player in the siege
+
+                        Debugger.Write("Other Player: " + otherplayer.getName(),DebugLevel.Informational);
+
+                        if(otherplayer.isOnline() && !player.isOnline()){
+                            if(!player.isOnline())playerData.ClearInventoryOnJoin=true;
+
+                            //kill the disconnected player. They will have disconnected by this point, naturally.
+
+                            //I'm fairly certain this won't drop their items, since they DC'd.
+                            //as such, let's hope we can access the inventory of offline players.
+
+
+                            //drop all that players inventory naturally, where the other player was.
+                            for(ItemStack is:dcedInventory.getContents()){
+                                if(is!=null)
+                                    otherplayer.getWorld().dropItemNaturally(otherplayer.getLocation(),is);
+                            }
+                            for(ItemStack is:dcedInventory.getArmorContents()){
+                                if(is!=null)
+                                    otherplayer.getWorld().dropItemNaturally(otherplayer.getLocation(),is);
+                            }
+
+                            player.getInventory().clear();
+                            player.setHealth(0);
+                            GriefPrevention.instance.getServer().broadcastMessage(otherplayer.getName() + " has defeated " + player.getName() + " in siege warfare!");
+
+
+                        }
+                    }
+
+
+                },20*10);
+
+            }
 		}
 
 		// drop data about this player
@@ -800,7 +916,7 @@ class PlayerEventHandler implements Listener {
 	}
 
 	// when a player drops an item
-	@EventHandler(priority = EventPriority.LOWEST)
+	@EventHandler(priority = EventPriority.NORMAL)
 	public void onPlayerDropItem(PlayerDropItemEvent event) {
 		Player player = event.getPlayer();
 		WorldConfig wc = GriefPrevention.instance.getWorldCfg(player.getWorld());
@@ -830,9 +946,68 @@ class PlayerEventHandler implements Listener {
 			event.setCancelled(true);
 		}
 	}
+    private Location getAffectedLocation(PlayerInteractEvent ev){
+        if(ev.getClickedBlock()==null) return null;
+        Location uselocation = ev.getClickedBlock().getLocation();
+        BlockFace bf = ev.getBlockFace();
+        int xoffset=bf.getModX(),yoffset=bf.getModY(),zoffset=bf.getModZ();
+        //south: Z+ North Z-
+        //east: X+ West X-
+        //Up: Y+ Down Y-
+        return new Location(ev.getClickedBlock().getWorld(),uselocation.getX()+xoffset,uselocation.getY()+yoffset,uselocation.getZ()+zoffset);
+    }
+    private Material[] IgnoreInteractionMaterials = new Material[]{Material.SIGN_POST,Material.SIGN,Material.WALL_SIGN};
+
+    //Leash/unleash.
+    //This might cause the plugin to stop working in 1.6.4, I'm not sure- if so, it will be removed.
+    @EventHandler(priority=EventPriority.NORMAL,ignoreCancelled = true)
+    void onPlayerLeashEntity(PlayerLeashEntityEvent event){
+        WorldConfig wc = GriefPrevention.instance.getWorldCfg(event.getEntity().getWorld());
+        if(wc.getLeadUsageRules().Allowed(event.getEntity(),event.getPlayer()).Denied()){
+            event.setCancelled(true);
+        }
+
+
+
+    }
+    @EventHandler(priority=EventPriority.NORMAL,ignoreCancelled = true)
+    void onPlayerUnleashEntity(PlayerUnleashEntityEvent event){
+        WorldConfig wc = GriefPrevention.instance.getWorldCfg(event.getEntity().getWorld());
+        if(wc.getLeadUsageRules().Allowed(event.getEntity(),event.getPlayer()).Denied()){
+            event.setCancelled(true);
+        }
+    }
+    @EventHandler(priority=EventPriority.NORMAL,ignoreCancelled=true)
+    void onPlayerEditBook(PlayerEditBookEvent event){
+        if(event.getPlayer().hasPermission(PermNodes.EavesDropPermission)) return;
+        WorldConfig wc = GriefPrevention.instance.getWorldCfg(event.getPlayer().getWorld());
+        if(wc.getEavesDropBooks())
+        {
+            String newTitle = event.getNewBookMeta().getTitle();
+            String oldTitle = event.getPreviousBookMeta().getTitle();
+            if(newTitle==null) newTitle="(unnamed)";
+
+
+
+               for(Player p:Bukkit.getOnlinePlayers()){
+                   if(p.hasPermission(PermNodes.EavesDropPermission)){
+                          GriefPrevention.sendMessage(p,TextMode.Instr,String.valueOf(ChatColor.ITALIC) + String.valueOf(ChatColor.GRAY) + "[BookEavesDrop]" + event.getPlayer().getName() + " has edited a book titled " + newTitle);
+                   }
+               }
+        }
+        ItemStack saveBook = new ItemStack(Material.WRITTEN_BOOK,1);
+        BookMeta bm = event.getNewBookMeta();
+        bm.setAuthor(event.getPlayer().getName());
+        saveBook.setItemMeta(bm);
+        ViewBook.AddRecentBook(saveBook);
+
+
+
+    }
+
 
 	// when a player interacts with the world
-	@EventHandler(priority = EventPriority.LOWEST)
+	@EventHandler(priority = EventPriority.NORMAL)
 	void onPlayerInteract(PlayerInteractEvent event) {
         Debugger.Write("onPlayerInteract",DebugLevel.Verbose);
 		if (event == null)
@@ -840,6 +1015,7 @@ class PlayerEventHandler implements Listener {
 		if (event.getPlayer() == null)
 			return; // MCPC seems to sometimes fire events with a null player...
 		Player player = event.getPlayer();
+
 		String ItemName = event.getItem() == null ? "null" : "ID:" + String.valueOf(event.getItem().getTypeId());
 		Debugger.Write("onPlayerInteract: Item:" + ItemName, DebugLevel.Verbose);
 
@@ -849,7 +1025,7 @@ class PlayerEventHandler implements Listener {
 		// determine target block. FEATURE: shovel and stick can be used from a
 		// distance away
 		Block clickedBlock = event.getClickedBlock();
-
+        Location relevantPosition = getAffectedLocation(event);
 		if (wc.getItemRules() != null) {
 			getTransparentMaterials();
 			try {
@@ -860,7 +1036,7 @@ class PlayerEventHandler implements Listener {
 
 			for (ItemUsageRules iur : wc.getItemRules()) {
 				if (iur.Applicable(event.getItem())) {
-					if (iur.TestPlayer(player, clickedBlock).Denied()) {
+					if (iur.TestPlayer(player, relevantPosition.getBlock()).Denied()) {
 						event.setCancelled(true);
 						return;
 
@@ -878,10 +1054,12 @@ class PlayerEventHandler implements Listener {
 			sb.append("Clicked:");
 			if (clickedBlock != null) {
 				sb.append(clickedBlock.getType().name());
-				sb.append("State:" + clickedBlock.getState() == null);
+                sb.append(",Relevant Location:" + GriefPrevention.getfriendlyLocationString(relevantPosition));
+				sb.append(",State:" + clickedBlock.getState() == null);
 				if (clickedBlock.getState() != null)
 					sb.append(" " + clickedBlock.getState().getClass().getName());
 			}
+
 			sb.append(",");
 			if (event != null) {
 				if (event.getItem() != null) {
@@ -925,14 +1103,25 @@ class PlayerEventHandler implements Listener {
 
 			return;
 		}
+        //hack: we want to ignore interactions with certain items.
+
+
 
 		Material clickedBlockType = clickedBlock.getType();
 
-		//
+    Debugger.Write("Checking block:" + clickedBlockType.name(),DebugLevel.Verbose);
+    for(Material checkmat:IgnoreInteractionMaterials){
+        if(checkmat !=null && checkmat.name().equals(clickedBlockType.name())){
+            Debugger.Write("Ignoring interaction with Material:" + clickedBlockType.name() + " as it is on the Ignore List.",DebugLevel.Verbose);
+            return;
+        }
+    }
+
+        //
 		PlayerData playerData = GriefPrevention.instance.dataStore.getPlayerData(player.getName());
 
 
-		if(clickedBlock.getType().name().equals("FLOWER_POT")){
+		if(GriefPrevention.isMCVersionorLater(GriefPrevention.MinecraftVersions.MC16) &&   clickedBlock.getType()==Material.FLOWER_POT){
             //flower pot, apply flower pot rules.
             if(wc.getFlowerPotRules().Allowed(player.getLocation(),player,true).Denied()){
                 event.setCancelled(true);
@@ -943,11 +1132,20 @@ class PlayerEventHandler implements Listener {
             if(inhand==Material.EYE_OF_ENDER){
                 if(wc.getEnderEyePortalRules().Allowed(player.getLocation(),player,true).Denied()){
                     event.setCancelled(true);
+                    return;
                 }
             }
 
+        }
+
+        if(inhand==Material.MONSTER_EGG){
+            if(wc.getSpawnEggBehaviour().Allowed(relevantPosition,player,true).Denied()){
+                event.setCancelled(true);
+                return;
+            }
 
         }
+
 		// Apply rules for the leash. Leashes can be attached to fences and
 		// netherbrick fences, but require
 		// permission at the block location for the player.
@@ -991,14 +1189,18 @@ class PlayerEventHandler implements Listener {
 			ContainerMaterials = new HashSet<Material>();
 			ContainerMaterials.add(Material.WORKBENCH);
 			ContainerMaterials.add(Material.ENDER_CHEST);
-			ContainerMaterials.add(Material.ANVIL);
+			if(GriefPrevention.isMCVersionorLater(GriefPrevention.MinecraftVersions.MC14))
+                ContainerMaterials.add(Material.ANVIL);
 			ContainerMaterials.add(Material.BREWING_STAND);
 			ContainerMaterials.add(Material.ENCHANTMENT_TABLE);
 			ContainerMaterials.add(Material.CAKE_BLOCK);
 			ContainerMaterials.add(Material.JUKEBOX);
 			ContainerMaterials.add(Material.DISPENSER);
-			ContainerMaterials.add(Material.DROPPER);
-			ContainerMaterials.add(Material.HOPPER);
+            if(GriefPrevention.isMCVersionorLater(GriefPrevention.MinecraftVersions.MC15))
+            {
+			  ContainerMaterials.add(Material.DROPPER);
+              ContainerMaterials.add(Material.HOPPER);
+            }
 
 		}
 		// apply rules for containers and crafting blocks
@@ -1130,44 +1332,54 @@ class PlayerEventHandler implements Listener {
 				return;
 			}
 		}
+        else if(clickedBlockType==Material.GRASS && player.getItemInHand()!=null && player.getItemInHand().getType()==Material.INK_SACK){
 
-		// otherwise handle right click (shovel, stick, bonemeal)
+                if (wc.getBonemealGrassRules().Allowed(relevantPosition, event.getPlayer()).Denied()) {
+                    event.setCancelled(true);
+                }
+                return;
+
+        }
+        else if (GriefPrevention.isMCVersionorLater(GriefPrevention.MinecraftVersions.MC17) &&
+                clickedBlockType==Material.LONG_GRASS &&
+                player.getItemInHand().getType()==Material.INK_SACK){
+           //MC 1.7 let's you grow tall grass to double height.
+
+            if (wc.getBonemealGrassRules().Allowed(relevantPosition, event.getPlayer()).Denied()) {
+                event.setCancelled(true);
+            }
+            return;
+        }
+
 		else {
 			// ignore all actions except right-click on a block or in the air
 			Action action = event.getAction();
+            Material materialInHand=null;
+            if(player.getItemInHand()!=null) materialInHand = player.getItemInHand().getType();
 			if (action != Action.RIGHT_CLICK_BLOCK && action != Action.RIGHT_CLICK_AIR)
 				return;
 
-			// what's the player holding?
-			Material materialInHand = player.getItemInHand().getType();
 
-			// if it's bonemeal, check for build permission (ink sac == bone
-			// meal, must be a Bukkit bug?)
-			if (materialInHand == Material.INK_SACK) {
-				if (wc.getBonemealGrassRules().Allowed(event.getClickedBlock().getLocation(), event.getPlayer()).Denied()) {
-					event.setCancelled(true);
-				}
-				return;
+
+			if (materialInHand == Material.BOAT) {
+                if(wc.getBoatPlacement().Allowed(relevantPosition,player).Denied()){
+                    event.setCancelled(true);
+                    return;
+                }
+
 			}
-
-			else if (materialInHand == Material.BOAT) {
-				Claim claim = GriefPrevention.instance.dataStore.getClaimAt(clickedBlock.getLocation(), false);
-				if (claim != null) {
-					String noAccessReason = claim.allowAccess(player);
-					if (noAccessReason != null) {
-						GriefPrevention.sendMessage(player, TextMode.Err, noAccessReason);
-						event.setCancelled(true);
-					}
-				}
-
-				return;
-			}
+            else if(materialInHand==Material.MINECART){
+                if(wc.getMinecartPlacement().Allowed(relevantPosition,player).Denied()){
+                    event.setCancelled(true);
+                    return;
+                }
+            }
 
 			// if it's a spawn egg, minecart, or boat, and this is a creative
 			// world, apply special rules
-			else if ((materialInHand == Material.MONSTER_EGG || materialInHand == Material.MINECART || materialInHand == Material.POWERED_MINECART || materialInHand == Material.STORAGE_MINECART || materialInHand == Material.HOPPER_MINECART || materialInHand == Material.EXPLOSIVE_MINECART || materialInHand == Material.BOAT) && GriefPrevention.instance.creativeRulesApply(clickedBlock.getLocation())) {
+			else if (materialInHand == Material.POWERED_MINECART || materialInHand == Material.STORAGE_MINECART || materialInHand == Material.HOPPER_MINECART || materialInHand == Material.EXPLOSIVE_MINECART && GriefPrevention.instance.creativeRulesApply(clickedBlock.getLocation())) {
 				// player needs build permission at this location
-				String noBuildReason = GriefPrevention.instance.allowBuild(player, clickedBlock.getLocation());
+				String noBuildReason = GriefPrevention.instance.allowBuild(player, relevantPosition);
 				if (noBuildReason != null) {
 					GriefPrevention.sendMessage(player, TextMode.Err, noBuildReason);
 
@@ -1176,7 +1388,7 @@ class PlayerEventHandler implements Listener {
 				}
 
 				// enforce limit on total number of entities in this claim
-				Claim claim = GriefPrevention.instance.dataStore.getClaimAt(clickedBlock.getLocation(), false);
+				Claim claim = GriefPrevention.instance.dataStore.getClaimAt(relevantPosition, false);
 				if (claim == null)
 					return;
 
@@ -1655,9 +1867,11 @@ class PlayerEventHandler implements Listener {
 				if (result.succeeded == CreateClaimResult.Result.Success) {
 
 					// inform and show the player
+					if(result.claim.isAdminClaim()){
+                        GriefPrevention.sendMessage(player,TextMode.Success,Messages.ClaimResizeAdmin);
+                    }
 					
-					
-					if(result.claim.getOwnerName().equals(player.getName())){
+					else if(result.claim.getOwnerName().equals(player.getName())){
 						//they are resizing their own claim.
 					GriefPrevention.sendMessage(player, TextMode.Success, Messages.ClaimResizeSuccess, String.valueOf(playerData.getRemainingClaimBlocks()));
 					}
@@ -1717,7 +1931,7 @@ class PlayerEventHandler implements Listener {
 				String noEditReason = claim.allowEdit(player);
 				if (noEditReason == null) {
 					// if he clicked on a corner, start resizing it
-					if ((clickedBlock.getX() == claim.getLesserBoundaryCorner().getBlockX() || clickedBlock.getX() == claim.getGreaterBoundaryCorner().getBlockX()) && (clickedBlock.getZ() == claim.getLesserBoundaryCorner().getBlockZ() || clickedBlock.getZ() == claim.getGreaterBoundaryCorner().getBlockZ())) {
+					if (playerData.claimResizing==null && (clickedBlock.getX() == claim.getLesserBoundaryCorner().getBlockX() || clickedBlock.getX() == claim.getGreaterBoundaryCorner().getBlockX()) && (clickedBlock.getZ() == claim.getLesserBoundaryCorner().getBlockZ() || clickedBlock.getZ() == claim.getGreaterBoundaryCorner().getBlockZ())) {
 						playerData.claimResizing = claim;
 						playerData.lastShovelLocation = clickedBlock.getLocation();
 						// TODO: Raise ClaimResizeBegin Event here
@@ -1745,7 +1959,7 @@ class PlayerEventHandler implements Listener {
 							}
 						}
 
-						// otherwise, he's trying to finish creating a
+						// otherwise, trying to finish creating a
 						// subdivision by setting the other boundary corner
 						else {
 							// if last shovel location was in a different world,
@@ -1759,14 +1973,16 @@ class PlayerEventHandler implements Listener {
 
 							// try to create a new claim (will return null if
 							// this subdivision overlaps another)
-							CreateClaimResult result = GriefPrevention.instance.dataStore.createClaim(player.getWorld(), playerData.lastShovelLocation.getBlockX(), clickedBlock.getX(), playerData.lastShovelLocation.getBlockY() - wc.getClaimsExtendIntoGroundDistance(), clickedBlock.getY() - wc.getClaimsExtendIntoGroundDistance(), playerData.lastShovelLocation.getBlockZ(), clickedBlock.getZ(), "--subdivision--", // owner
-																																																																																																			// name
-																																																																																																			// is
-																																																																																																			// not
-																																																																																																			// used
-																																																																																																			// for
-																																																																																																			// subdivisions
-									playerData.claimSubdividing, null, false, player, true);
+							CreateClaimResult result =
+                                    GriefPrevention.instance.dataStore.createClaim(
+                                            player.getWorld(),
+                                            playerData.lastShovelLocation.getBlockX(),
+                                            clickedBlock.getX(),
+                                            playerData.lastShovelLocation.getBlockY() - wc.getClaimsExtendIntoGroundDistance(),
+                                            clickedBlock.getY() - wc.getClaimsExtendIntoGroundDistance(),
+                                            playerData.lastShovelLocation.getBlockZ(),
+                                            clickedBlock.getZ(), player.getName(),
+                                            playerData.claimSubdividing, null, false, player, true);
 
 							// if it didn't succeed, tell the player why
 							if (result.succeeded == CreateClaimResult.Result.ClaimOverlap) {
@@ -1967,7 +2183,7 @@ class PlayerEventHandler implements Listener {
 					if (wc.getClaimsPerPlayerLimit() > 0 && !player.hasPermission(PermNodes.IgnoreClaimsLimitPermission)) {
 						int numclaims = playerData.getWorldClaims(player.getWorld()).size();
 						int remaining = wc.getClaimsPerPlayerLimit() - numclaims;
-						System.out.println("Sending notification that Player has " + remaining + " Claims left in this world.");
+						System.out.println("Sending notification that Player(" + player.getName() + "  has " + remaining + " Claims left in this world.");
 						GriefPrevention.sendMessage(player, TextMode.Success, Messages.RemainingClaimsWorld, String.valueOf(remaining));
 
 					}
@@ -1975,13 +2191,14 @@ class PlayerEventHandler implements Listener {
 					Visualization visualization = Visualization.FromClaim(result.claim, clickedBlock.getY(), VisualizationType.Claim, player.getLocation());
 					Visualization.Apply(player, visualization);
 					playerData.lastShovelLocation = null;
+
 				}
 			}
 		}
 	}
 
 	// when a player interacts with an entity...
-	@EventHandler(ignoreCancelled = true, priority = EventPriority.LOWEST)
+	@EventHandler(ignoreCancelled = true, priority = EventPriority.NORMAL)
 	public void onPlayerInteractEntity(PlayerInteractEntityEvent event) {
 		try {
             Debugger.Write("onPlayerInteractEntity, instance:" + event.getRightClicked().getClass().getName(), Debugger.DebugLevel.Verbose);
@@ -2011,10 +2228,11 @@ class PlayerEventHandler implements Listener {
 			// don't allow interaction with item frames in claimed areas without
 			// build permission
 			if (entity instanceof Hanging) {
-                if(entity.getEntityId()==18){
+                if(GriefPrevention.isMCVersionorLater(GriefPrevention.MinecraftVersions.MC16) && entity instanceof ItemFrame){
                 //Item Frame.
                     if(wc.getItemFrameRules().Allowed(entity.getLocation(),player,true).Denied()){
                         event.setCancelled(true);
+                        return;
                     }
 
                 }
@@ -2026,13 +2244,28 @@ class PlayerEventHandler implements Listener {
 				}
 
 			}
+            else if(entity instanceof Boat){
+                if(wc.getBoatRiding().Allowed(entity.getLocation(),player,true).Denied()){
+                    event.setCancelled(true);
+                    return;
+                }
+
+            }
+            else if(entity instanceof Minecart){
+                if(wc.getMinecartRiding().Allowed(entity.getLocation(),player,true).Denied()){
+                    event.setCancelled(true);
+                    return;
+                }
+            }
 
 			if (entity instanceof Creature) {
 				// check for usage of Leads.
 				// This is for with creatures, the BlockEvent interaction
 				// handles interaction with Fence and Netherbrick fence
 				// blocks.
-				if (handItem!=null && handItem.getType() == Material.LEASH) {
+
+				if (GriefPrevention.isMCVersionorLater(GriefPrevention.MinecraftVersions.MC16) &&
+                        handItem!=null && handItem.getType() == Material.LEASH) {
 					if (entity instanceof Tameable) {
 						if (((Tameable) entity).getOwner() == player) {
 							return;
@@ -2042,11 +2275,17 @@ class PlayerEventHandler implements Listener {
 						event.setCancelled(true);
 						return;
 					}
-				} else if (handItem!=null && handItem.getType().getId() == 421) {
+				}
+                //Name Tags.
+                else if (GriefPrevention.isMCVersionorLater(GriefPrevention.MinecraftVersions.MC16) &&
+                        handItem!=null && handItem.getType()==Material.NAME_TAG) {
 					if (entity instanceof Tameable) {
-						if (((Tameable) entity).getOwner() == player) {
-							return;
-						}
+                        Tameable tamed = (Tameable)entity;
+                        if(tamed!=null){
+                            if (((Tameable) entity).getOwner() == player) {
+                                return;
+                            }
+                        }
 
 					}
 					if (wc.getNameTagUsageRules().Allowed(entity, player).Denied())
@@ -2056,10 +2295,10 @@ class PlayerEventHandler implements Listener {
 					}
 				}
 			}
-			if (isHorse(entity)) {
+			if (isHorse(entity) && wc.getHorseTrust()!= WorldConfig.HorseTrustConstants.Disabled) {
                 Debugger.Write("Horse Detected.",DebugLevel.Verbose);
 				Horse h = (Horse) entity;
-                Debugger.Write("Horse Owner:" + h.getOwner().getName() + " Player:" + player.getName(),DebugLevel.Verbose);
+
 				if (h.isTamed() && handItem!=null && handItem.getType() == Material.GOLDEN_APPLE) {
 					// if horse is tamed, apply breeding rules.
 					if (wc.getBreedingRules().Allowed(h, player).Denied()) {
@@ -2067,7 +2306,7 @@ class PlayerEventHandler implements Listener {
 						return;
 					}
 
-				} else if (handItem!=null && (handItem.getType() == Material.WHEAT || handItem.getType() == Material.HAY_BLOCK || handItem.getType() == Material.APPLE || handItem.getType() == Material.GOLDEN_APPLE)) {
+				} else if (handItem!=null && h.getHealth() < h.getMaxHealth() && (handItem.getType() == Material.WHEAT || handItem.getType() == Material.HAY_BLOCK || handItem.getType() == Material.APPLE || handItem.getType() == Material.GOLDEN_APPLE)) {
 					// apply feeding rules.
 					if (wc.getFeedingRules().Allowed(h, player).Denied()) {
 						event.setCancelled(true);
@@ -2089,7 +2328,7 @@ class PlayerEventHandler implements Listener {
 
                             boolean SpecialHorseTrust = true;
 
-                            if(wc.getHorseTrust()){
+                            if(wc.getHorseTrust()== WorldConfig.HorseTrustConstants.Extended){
 
                             boolean HasTrust = false;
                             Claim targetclaim = GriefPrevention.instance.dataStore.getClaimAt(h.getLocation(),true);
@@ -2301,6 +2540,7 @@ class PlayerEventHandler implements Listener {
 	void onPlayerJoin(PlayerJoinEvent event) {
 
 		Player player = event.getPlayer();
+        GriefPrevention.AddLogEntry("Player:" + player.getName() + " UUID:" + player.getUniqueId());
 		String playerName = player.getName();
 		WorldConfig wc = GriefPrevention.instance.getWorldCfg(player.getWorld());
 		if(!wc.Enabled()) return;
@@ -2396,7 +2636,8 @@ class PlayerEventHandler implements Listener {
 	// when a player attempts to join the server...
 	@EventHandler(priority = EventPriority.HIGHEST)
 	void onPlayerLogin(PlayerLoginEvent event) {
-		Player player = event.getPlayer();
+		final Player player = event.getPlayer();
+        if(player==null) return; //wat
 		WorldConfig wc = GriefPrevention.instance.getWorldCfg(player.getWorld());
 		if(!wc.Enabled()) return;
 		// all this is anti-spam code
@@ -2434,10 +2675,42 @@ class PlayerEventHandler implements Listener {
 		// remember the player's ip address
 		PlayerData playerData = GriefPrevention.instance.dataStore.getPlayerData(player.getName());
 		playerData.ipAddress = event.getAddress();
+
+        if(playerData.ClearInventoryOnJoin){
+
+            //clear their inventory.
+            //set the flag to false, we don't want to clear it again!
+            playerData.ClearInventoryOnJoin=false;
+
+            player.getInventory().clear();
+
+            player.getInventory().setArmorContents( new ItemStack[4]);
+            //send them the inventory clear message.
+            GriefPrevention.sendMessage(player,TextMode.Err,Messages.PvPPunished);
+
+            //now we kill them off.
+            //we clear it first so they do not drop their inventory, since it was already
+            //given away by the PvP and/or siege handling logic.
+            //we'll defer this functionality a few seconds. seems to cause an exception, presumably as
+            //bukkit has not initialized some internal structures for the player.
+            Bukkit.getScheduler().runTaskLater(GriefPrevention.instance,new Runnable(){
+                public void run(){
+                    PlayerInventory invent = player.getInventory();
+                    invent.clear();
+
+                    invent.setArmorContents(new ItemStack[4]);
+                    player.setHealth(0);
+                    Debugger.Write("Cleared Inventory of " + player.getName() + " as they joined.",DebugLevel.Verbose);
+                }},1);
+
+        }
+
+
+
 	}
 
 	// when a player picks up an item...
-	@EventHandler(ignoreCancelled = true, priority = EventPriority.LOWEST)
+	@EventHandler(ignoreCancelled = true, priority = EventPriority.NORMAL)
 	public void onPlayerPickupItem(PlayerPickupItemEvent event) {
 		// we allow plugins to give players items regardless.
 		// eg: this only prevents "true" pickups.
@@ -2456,7 +2729,7 @@ class PlayerEventHandler implements Listener {
 
 		// if we're preventing spawn camping and the player was previously empty
 		// handed...
-		if (wc.getSpawnProtectEnabled() && (player.getItemInHand().getType() == Material.AIR)) {
+		if (wc.getSpawnProtectEnabled() && (player.getItemInHand()==null || player.getItemInHand().getType() == Material.AIR)) {
 			// if that player is currently immune to pvp
 			PlayerData playerData = GriefPrevention.instance.dataStore.getPlayerData(event.getPlayer().getName());
 			if (playerData.pvpImmune) {
@@ -2527,7 +2800,7 @@ class PlayerEventHandler implements Listener {
 		GriefPrevention.instance.checkPvpProtectionNeeded(event.getPlayer());
 	}
 
-	@EventHandler(priority = EventPriority.LOWEST)
+	@EventHandler(priority = EventPriority.NORMAL)
 	public void onPlayerShearEntity(PlayerShearEntityEvent event) {
 
 		WorldConfig wc = GriefPrevention.instance.getWorldCfg(event.getEntity().getWorld());
@@ -2542,7 +2815,7 @@ class PlayerEventHandler implements Listener {
 	}
 
 	// when a player teleports
-	@EventHandler(priority = EventPriority.LOWEST)
+	@EventHandler(priority = EventPriority.NORMAL)
 	public void onPlayerTeleport(PlayerTeleportEvent event) {
 		Player player = event.getPlayer();
 		WorldConfig wc = GriefPrevention.instance.getWorldCfg(player.getWorld());

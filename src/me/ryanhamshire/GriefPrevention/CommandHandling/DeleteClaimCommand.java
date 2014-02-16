@@ -31,7 +31,7 @@ public class DeleteClaimCommand extends GriefPreventionCommand {
 		if (player == null)
 			return false;
 
-		if(!EnsurePermission(player,command.getName())) return true;
+
 		WorldConfig wc = inst.getWorldCfg(player.getWorld());
 
 		if (command.getName().equalsIgnoreCase("deleteclaim")) {
@@ -81,7 +81,7 @@ public class DeleteClaimCommand extends GriefPreventionCommand {
 		else if (command.getName().equalsIgnoreCase("deleteallclaims")) {
 			// requires one or two parameters, the other player's name and
 			// whether to delete locked claims.
-			if (args.length < 1 && args.length > 2)
+			if (args.length < 1 || args.length > 2)
 				return false;
 
 			// try to find that player

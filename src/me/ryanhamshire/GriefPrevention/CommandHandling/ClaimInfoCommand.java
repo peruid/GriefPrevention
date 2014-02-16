@@ -24,9 +24,7 @@ public class ClaimInfoCommand extends GriefPreventionCommand {
 		GriefPrevention inst = GriefPrevention.instance;
 		Player player = (Player) sender;
 		Claim claimatpos = null;
-		if(player!=null){
-			if(!EnsurePermission(player,command.getName())) return true;
-		}
+
 		if (args.length == 0)
 			claimatpos = inst.dataStore.getClaimAt(player.getLocation(), true);
 		else {
@@ -70,7 +68,7 @@ public class ClaimInfoCommand extends GriefPreventionCommand {
 				childinfo = claimatpos.children.size() + " (";
 
 				for (Claim childclaim : claimatpos.children) {
-					childinfo += String.valueOf(childclaim.getSubClaimID()) + ",";
+					childinfo += String.valueOf(childclaim.getID()) + ",";
 				}
 				// remove the last character since it is a comma we do not want.
 				childinfo = childinfo.substring(0, childinfo.length() - 1);

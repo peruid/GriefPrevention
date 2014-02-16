@@ -34,10 +34,8 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.World.Environment;
-import org.bukkit.block.Block;
-import org.bukkit.block.BlockFace;
-import org.bukkit.block.BlockState;
-import org.bukkit.block.Chest;
+import org.bukkit.block.*;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.TNTPrimed;
@@ -128,7 +126,7 @@ public class BlockEventHandler implements Listener {
 	}
 
 	// when a player breaks a block...
-	@EventHandler(ignoreCancelled = true, priority = EventPriority.LOWEST)
+	@EventHandler(ignoreCancelled = true, priority = EventPriority.NORMAL)
 	public void onBlockBreak(BlockBreakEvent breakEvent) {
         boolean DoCancelEvent = false;
         ClaimBehaviourData cbd = null;
@@ -202,6 +200,36 @@ public class BlockEventHandler implements Listener {
 			// run the specialized code for treetop removal (see below)
 			GriefPrevention.instance.handleLogBroken(block);
 		}
+            else if(block.getType()==Material.ICE && wc.getWaterBucketEmptyBehaviour().Allowed(block.getLocation(),player).Denied()){
+            //ice logic. We want to allow breaking ice (if it has so far passed)
+            //in the nether or a nether biome (since it won't turn to water)
+            //if the item being used has a silk touch enchant
+            ItemStack inhand = player.getItemInHand();
+            boolean FoundSilk=false;
+            if(block.getBiome()!= Biome.HELL){
+                if(inhand!=null){
+                    for(Enchantment enchant:inhand.getEnchantments().keySet()){
+                        if(enchant==Enchantment.SILK_TOUCH){
+                            FoundSilk=true;
+                            break;
+                        }
+
+                    }
+                    if(!FoundSilk){
+                        breakEvent.setCancelled(true);
+                        return;
+                    }
+                }
+
+
+            }
+            //search for Silk Touch Enchant. If they have silk touch we will allow it. Otherwise deny it.
+
+
+
+
+        }
+
         }
         finally {
 
@@ -210,7 +238,7 @@ public class BlockEventHandler implements Listener {
 	}
 
 	// blocks are not destroyed by fire, unless configured to do so
-	@EventHandler(priority = EventPriority.LOWEST)
+	@EventHandler(priority = EventPriority.NORMAL)
 	public void onBlockBurn(BlockBurnEvent burnEvent) {
 		WorldConfig wc = GriefPrevention.instance.getWorldCfg(burnEvent.getBlock().getWorld().getName());
 		if(!wc.Enabled()) return;
@@ -337,7 +365,7 @@ public class BlockEventHandler implements Listener {
         }
 	}
 
-	@EventHandler(ignoreCancelled = true, priority = EventPriority.LOWEST)
+	@EventHandler(ignoreCancelled = true, priority = EventPriority.NORMAL)
 	public void onBlockFromTo(BlockFromToEvent spreadEvent) {
 		
 		
@@ -422,7 +450,7 @@ public class BlockEventHandler implements Listener {
     }
 	// blocks are ignited ONLY by flint and steel (not by being near lava, open
 	// flames, etc), unless configured otherwise
-	@EventHandler(priority = EventPriority.LOWEST)
+	@EventHandler(priority = EventPriority.NORMAL)
 	public void onBlockIgnite(BlockIgniteEvent igniteEvent) {
 		WorldConfig wc = GriefPrevention.instance.getWorldCfg(igniteEvent.getBlock().getWorld());
 		if(!wc.Enabled()) return;
@@ -455,7 +483,7 @@ public class BlockEventHandler implements Listener {
 
 	
 	
-	@EventHandler(priority = EventPriority.LOWEST)
+	@EventHandler(priority = EventPriority.NORMAL)
 	public void onBlockPhysics(BlockPhysicsEvent event) {
 
 		// determine if location is inside a claim.
@@ -465,7 +493,7 @@ public class BlockEventHandler implements Listener {
 	}
 
 	// blocks "pushing" other players' blocks around (pistons)
-	@EventHandler(ignoreCancelled = true, priority = EventPriority.LOWEST)
+	@EventHandler(ignoreCancelled = true, priority = EventPriority.NORMAL)
 	public void onBlockPistonExtend(BlockPistonExtendEvent event) {
 		List<Block> blocks = event.getBlocks();
 
@@ -557,7 +585,7 @@ public class BlockEventHandler implements Listener {
 
 	// blocks theft by pulling blocks out of a claim (again pistons)
 	boolean retracting=false;
-	@EventHandler(ignoreCancelled = true, priority = EventPriority.LOWEST)
+	@EventHandler(ignoreCancelled = true, priority = EventPriority.NORMAL)
 	public void onBlockPistonRetract(BlockPistonRetractEvent event) {
 		// we only care about sticky pistons
 		WorldConfig wc = GriefPrevention.instance.getWorldCfg(event.getBlock().getWorld());
@@ -666,12 +694,7 @@ public class BlockEventHandler implements Listener {
 		
 		
 		// make sure the player is allowed to build at the location
-		/*String noBuildReason = GriefPrevention.instance.allowBuild(player, block.getLocation());
-		if (noBuildReason != null) {
-			GriefPrevention.sendMessage(player, TextMode.Err, noBuildReason);
-			placeEvent.setCancelled(true);
-			return;
-		}
+		/*
 */
 		if(wc.getPlaceBlockRules().Allowed(block.getLocation(),player,cbd==null).Denied() && cbd==null){
 			placeEvent.setCancelled(true);
@@ -835,7 +858,7 @@ public class BlockEventHandler implements Listener {
 
 	// fire doesn't spread unless configured to, but other blocks still do
 	// (mushrooms and vines, for example)
-	@EventHandler(priority = EventPriority.LOWEST)
+	@EventHandler(priority = EventPriority.NORMAL)
 	public void onBlockSpread(BlockSpreadEvent spreadEvent) {
 
 		WorldConfig wc = GriefPrevention.instance.getWorldCfg(spreadEvent.getBlock().getWorld());
@@ -878,7 +901,7 @@ public class BlockEventHandler implements Listener {
 
 	// ensures dispensers can't be used to dispense a block(like water or lava)
 	// or item across a claim boundary
-	@EventHandler(ignoreCancelled = true, priority = EventPriority.LOWEST)
+	@EventHandler(ignoreCancelled = true, priority = EventPriority.NORMAL)
 	public void onDispense(BlockDispenseEvent dispenseEvent) {
 
 		// from where?

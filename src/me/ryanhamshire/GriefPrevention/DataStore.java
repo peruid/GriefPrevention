@@ -25,12 +25,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import me.ryanhamshire.GriefPrevention.Debugger.DebugLevel;
 import me.ryanhamshire.GriefPrevention.Configuration.WorldConfig;
-import me.ryanhamshire.GriefPrevention.events.ClaimAfterCreateEvent;
-import me.ryanhamshire.GriefPrevention.events.ClaimBeforeCreateEvent;
-import me.ryanhamshire.GriefPrevention.events.ClaimDeletedEvent;
-import me.ryanhamshire.GriefPrevention.events.ClaimResizeEvent;
-import me.ryanhamshire.GriefPrevention.events.SiegeEndEvent;
-import me.ryanhamshire.GriefPrevention.events.SiegeStartEvent;
+import me.ryanhamshire.GriefPrevention.events.*;
 import me.ryanhamshire.GriefPrevention.exceptions.WorldNotFoundException;
 import me.ryanhamshire.GriefPrevention.tasks.PlayerRescueTask;
 import me.ryanhamshire.GriefPrevention.tasks.SecureClaimTask;
@@ -79,8 +74,12 @@ public abstract class DataStore {
 	// in-memory cache for player data
 	protected ConcurrentHashMap<String, PlayerData> playerNameToPlayerDataMap = new ConcurrentHashMap<String, PlayerData>();
 
+    protected Set<String> ClearInventoryOnJoinPlayers = new HashSet<String>();
+
 	// timestamp for each siege cooldown to end
 	private HashMap<String, Long> siegeCooldownRemaining = new HashMap<String, Long>();
+
+
 
 	/**
 	 * Adds a claim to the datastore, making it an effective claim.
@@ -91,24 +90,22 @@ public abstract class DataStore {
 		// ClaimCreatedEvent createevent = new ClaimCreatedEvent();
 		// ClaimCreatedEvent ev
 
+        // Get a unique identifier for the claim which will be used to name the
+        // file on disk
+        if (newClaim.id == null) {
+            newClaim.id = this.nextClaimID;
+            this.incrementNextClaimID();
+        }
 		// subdivisions are easy
 		if (newClaim.parent != null) {
-			if (newClaim.subClaimid == null) {
-				GriefPrevention.AddLogEntry("Setting Subclaim ID to:" + String.valueOf(1 + newClaim.parent.children.size()));
-				newClaim.subClaimid = (long) (newClaim.parent.children.size() + 1);
-			}
+
 			newClaim.parent.children.add(newClaim);
 			newClaim.inDataStore = true;
 			this.saveClaim(newClaim);
 			return;
 		}
 
-		// Get a unique identifier for the claim which will be used to name the
-		// file on disk
-		if (newClaim.id == null) {
-			newClaim.id = this.nextClaimID;
-			this.incrementNextClaimID();
-		}
+
 
 		// add it and mark it as added
 		int j = 0;
@@ -212,6 +209,10 @@ public abstract class DataStore {
 
 		}
 
+        for(String pname:this.playerNameToPlayerDataMap.keySet()){
+            this.savePlayerData(pname,playerNameToPlayerDataMap.get(pname));
+
+        }
 	}
 
 	@Deprecated
@@ -235,7 +236,9 @@ public abstract class DataStore {
 		CreateClaimResult result = new CreateClaimResult();
 		WorldConfig wc = GriefPrevention.instance.getWorldCfg(world);
 		int smallx, bigx, smally, bigy, smallz, bigz;
-
+        if(parent!=null){
+            Debugger.Write("Creating Subclaim of Claim with ID:" + parent.getID(),DebugLevel.Verbose);
+        }
 		Player gotplayer = Bukkit.getPlayer(ownerName);
 		// determine small versus big inputs
 		if (x1 < x2) {
@@ -311,6 +314,14 @@ public abstract class DataStore {
 					result.succeeded = CreateClaimResult.Result.Canceled;
 					return result;
 				}
+                //also raise deprecated NewClaimCreated Event.
+                NewClaimCreated ncc = new NewClaimCreated(newClaim);
+                Bukkit.getServer().getPluginManager().callEvent(ncc);
+                if(claimevent.isCancelled()){
+                    result.succeeded = CreateClaimResult.Result.Canceled;
+                    return result;
+                }
+
 			}
 		} else {
 			/*
@@ -376,7 +387,7 @@ public abstract class DataStore {
 	// deletes a claim or subdivision
 	synchronized private boolean deleteClaim(Claim claim, boolean sendevent, Player p) {
 		Debugger.Write("Deleting Claim:" + claim.getID(), DebugLevel.Verbose);
-		;
+
 		// fire the delete Claim event.
 		if (sendevent) {
 			ClaimDeletedEvent ev = new ClaimDeletedEvent(claim, p);
@@ -391,7 +402,7 @@ public abstract class DataStore {
 		if (claim.parent != null) {
 			Claim parentClaim = claim.parent;
 			parentClaim.children.remove(claim);
-			this.saveClaim(parentClaim);
+			//this.saveClaim(parentClaim);
 			return true;
 		}
 
@@ -473,6 +484,11 @@ public abstract class DataStore {
 
 	public abstract boolean deletePlayerData(String playerName);
 
+
+    synchronized public void endSiege(SiegeData siegeData, String winnerName, String loserName, boolean death) {
+        endSiege(siegeData,winnerName,loserName,death,true);
+
+    }
 	/**
 	 * Ends a siege. Either winnerName or loserName can be null, but not both
 	 * 
@@ -485,7 +501,7 @@ public abstract class DataStore {
 	 * @param death
 	 *            Was the siege ended by a player's death?
 	 */
-	synchronized public void endSiege(SiegeData siegeData, String winnerName, String loserName, boolean death) {
+	synchronized public void endSiege(SiegeData siegeData, String winnerName, String loserName, boolean death,boolean Announcement) {
 		boolean grantAccess = false;
 		SiegeEndEvent event = new SiegeEndEvent(siegeData);
 		Bukkit.getPluginManager().callEvent(event);
@@ -546,7 +562,7 @@ public abstract class DataStore {
                 //command for that player.
                 for(int i=PlayersinClaim.size();i<0;i--){
                     Player p  = PlayersinClaim.get(i);
-                    if(p.getLocation().distance(bbi.getLocation())<1){
+                    if(p.getEyeLocation().distance(bbi.getLocation())<1){
                         //'rescue' the player immediately.
                         //this would, with the /trapped command, take a few seconds. We do the same logic here
                         //but make it occur immediately.
@@ -569,7 +585,12 @@ public abstract class DataStore {
 			siegeData.SiegedBlocks.clear();
 			GriefPrevention.AddLogEntry("reverted " + revertedCount + " Sieged Blocks.");
 
+
+
+
 		}
+
+
 		// start cooldowns for every attacker/involved claim pair
 		for (int i = 0; i < siegeData.claims.size(); i++) {
 			Claim claim = siegeData.claims.get(i);
@@ -587,14 +608,14 @@ public abstract class DataStore {
 		GriefPrevention.instance.getServer().getScheduler().cancelTask(siegeData.checkupTaskID);
 
 		// notify everyone who won and lost
-		if (winnerName != null && loserName != null) {
+		if (winnerName != null && loserName != null && Announcement) {
 			GriefPrevention.instance.getServer().broadcastMessage(winnerName + " defeated " + loserName + " in siege warfare!");
 		}
 
 		// if the claim should be opened to looting
 		if (grantAccess) {
 			Player winner = GriefPrevention.instance.getServer().getPlayer(winnerName);
-			if (winner != null) {
+			if (winner != null && Announcement) {
 				// notify the winner
 				GriefPrevention.sendMessage(winner, TextMode.Success, Messages.SiegeWinDoorsOpen);
 
@@ -744,13 +765,15 @@ public abstract class DataStore {
 	 *         location.
 	 */
 	synchronized public Claim getClaimAt(Location location, boolean ignoreHeight) {
-		 Debugger.Write("Looking for Claim at:" +
-		 GriefPrevention.getfriendlyLocationString(location) +
-		 " Ignoreheight:" + ignoreHeight,DebugLevel.Verbose);
 
-        Debugger.Write("ChunkMap Size:" + claims.chunkmap.size() + " claimworldmap:" + claims.claimworldmap.size() + " ClaimMap:" + claims.claimmap.size(),DebugLevel.Verbose);
+
 
         if(location==null) return null;
+        //Debugger.Write("Looking for Claim at:" +
+        //        GriefPrevention.getfriendlyLocationString(location) +
+        //        " Ignoreheight:" + ignoreHeight,DebugLevel.Verbose);
+
+        //Debugger.Write("ChunkMap Size:" + claims.chunkmap.size() + " claimworldmap:" + claims.claimworldmap.size() + " ClaimMap:" + claims.claimmap.size(),DebugLevel.Verbose);
 		WorldConfig wc = GriefPrevention.instance.getWorldCfg(location.getWorld());
 		if(!wc.getClaimsEnabled()) return null;
 		// create a temporary "fake" claim in memory for comparison purposes
@@ -970,6 +993,7 @@ public abstract class DataStore {
 	 * @return
 	 */
 	synchronized public PlayerData getPlayerData(String playerName) {
+        playerName=playerName.toLowerCase();
 		// first, look in memory
 		PlayerData playerData = this.playerNameToPlayerDataMap.get(playerName);
 
@@ -1230,6 +1254,7 @@ public abstract class DataStore {
 		this.addDefault(defaults, Messages.ConfirmationReset, "Confirmation for {0} Reset.", "0:Name of confirmation flag");
 		this.addDefault(defaults, Messages.OtherPlayerResizeInsufficientWorldBlocks, "{0} Needs {1} more claim blocks for that.", "0:Player that needs more claim blocks;1:Claim blocks required");
 		this.addDefault(defaults, Messages.ClaimResizedOtherPlayer, "{0}'s Claim has been resized. They now have {1} Claim Blocks left.", "0:Owner of claim;1:Claim blocks remaining.");
+        this.addDefault(defaults,Messages.ClaimResizeAdmin,"Administrator Claim resized.",null);
         this.addDefault(defaults,Messages.StartIgnorePlayer,"You are now ignoring {0}.","0:Player being ignored");
         this.addDefault(defaults,Messages.StopIgnorePlayer,"You are no longer ignoring {0}.","0:Player being unignored");
         this.addDefault(defaults,Messages.IgnoreInstructions,"To ignore a player, you can use the /ignore command.",null);
@@ -1241,8 +1266,11 @@ public abstract class DataStore {
         this.addDefault(defaults,Messages.PlayerReceivesHorse,"This horse now belongs to you.",null);
         this.addDefault(defaults,Messages.MountOtherPlayersHorse,"You have mounted {0}'s horse.","0:owner of horse");
         this.addDefault(defaults,Messages.NoPermission,"You cannot do that here.",null);
-
-
+        this.addDefault(defaults,Messages.PvPLogAnnouncement,"{0} PvP Logged. I'm sure they won't miss their stuff...","0:Player Name");
+        this.addDefault(defaults,Messages.PvPPunishDefenderWarning,"{0} has engaged you in PVP combat! fight or run away, but if you log out while in combat you will lose your inventory!","0:player engaging combat");
+        this.addDefault(defaults,Messages.PvPPunishAttackerWarning,"You have engaged {0} in PVP combat! fight or run away, but if you log out while in combat you will lose your inventory!","0:player engaging combat");
+        this.addDefault(defaults,Messages.PvPLogoutSafely,"You are no longer PvP Flagged. You may safely logout.",null);
+        this.addDefault(defaults,Messages.PvPPunished,"You have been punished for Logging out during a siege or PvP. You were warned...",null);
 		// load the config file
 		FileConfiguration config = YamlConfiguration.loadConfiguration(new File(messagesFilePath));
 
@@ -1598,6 +1626,14 @@ public abstract class DataStore {
 				this.saveClaim(c);
 				this.getClaimArray().removeID(c.getID()); // remove this claim.;
 				accum++;
+                if(!c.isAdminClaim()){
+                    PlayerData pd = this.getPlayerData(c.claimOwnerName);
+                    if(pd.claims.contains(c)){
+                        pd.claims.remove(c);
+                    }
+
+                }
+
 			}
 		} catch (Exception exx) {
 		}

@@ -74,6 +74,11 @@ commands:
       usage: /AdjustBonusClaimBlocks <player> <amount>
       permission: griefprevention.commands.adjustbonusclaimblocks
       aliases: acb
+   adjustaccruedclaimblocks:
+      description: Adds or subtracts accrued claim blocks for a player.
+      usage: /AdjustAccruedClaimBlocks <player> <amount>
+      permission: griefprevention.commands.adjustaccruedclaimblocks
+      aliases: aab
    transferclaimblocks:
       description: transfers claim blocks from one player to another.
       usage: /TransferClaimBlocks <sourceplayer> <targetplayer> <amount>
@@ -196,6 +201,11 @@ commands:
       description: sets GriefPrevention debug options. 
       usage: /gpdebug <option> <value>
       permission: griefprevention.commands.gpdebug
+   viewbook:
+      description: Allows copying of books for eavesdropping purposes. 
+      usage: /viewbook <id>
+      permission: griefprevention.commands.viewbook
+      
 permissions:
     griefprevention.basicclaimcommands:
         description: Grants access to Basic GriefPrevention claim commands.
@@ -253,6 +263,9 @@ permissions:
         default: true
     griefprevention.commands.adjustbonusclaimblocks:
         description: grants access to the adjustbonusclaimblocks command.
+        default: op
+    griefprevention.commands.adjustaccruedclaimblocks:
+        description: grants access to the adjustaccruedclaimblocks command.
         default: op
     griefprevention.commands.transferclaimblocks:
         description: grants access to the transferclaimblocks command.
@@ -335,6 +348,9 @@ permissions:
     griefprevention.commands.gpdebug:
         description: grants access to the gpdebug command.
         default: op
+    griefprevention.commands.viewbook:
+        description: grants access to the viewbook command.
+        default: op
     griefprevention.claims.transfer:
         description: grants access to allow transfer of claims.
         default: op
@@ -386,4 +402,7 @@ permissions:
         default: op
     griefprevention.admin.lock:
         description: Grants permission to use the lock/unlock commands on any claim.
+        default: op
+    griefprevention.spam.notignorable:
+        description: Makes a Player impossible to ignore using the /ignore command.
         default: op

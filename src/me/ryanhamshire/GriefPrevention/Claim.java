@@ -170,23 +170,12 @@ public class Claim {
 	 * currently impacting this claim
 	 */
 	public SiegeData siegeData = null;
-	/**
-	 * Subclaim ID. null for top-level claims, unique among subclaims otherwise.
-	 */
-	Long subClaimid = null;
+
 
 	// whether or not this is an administrative claim
 	// administrative claims are created and maintained by players with the
 	// griefprevention.adminclaims permission.
 
-	/**
-	 * retrieves the index/ID of a given subclaim.
-	 * 
-	 * @param childclaim
-	 *            Claim to get the index of.
-	 * @return -1 if the given claim is not a subdivided claim of this claim.
-	 *         otherwise, the index of the claim
-	 */
 
 	// basic constructor, just notes the creation time
 	// see above declarations for other defaults
@@ -897,6 +886,14 @@ public class Claim {
 	}
 
 	/**
+	 * @deprecated use Claim.getID() instead
+	 */
+	@Deprecated
+	public Long getSubClaimID() {
+		return this.parent == null ? null : this.id;
+	}
+
+	/**
 	 * Returns a copy of the location representing lower x, y, z limits
 	 * 
 	 * @return
@@ -1030,28 +1027,7 @@ public class Claim {
 		return GriefPrevention.instance.getMetaHandler().getClaimMeta(PluginKey, this);
 	}
 
-	/**
-	 * retrieves a Subclaim by the Subclaim's unique index.
-	 * 
-	 * @param pID
-	 * @return
-	 */
-	public Claim getSubClaim(long pID) {
-		for (Claim subclaim : children) {
-			if (subclaim.getSubClaimID() == pID)
-				return subclaim;
-		}
-		return null;
-	}
 
-	/**
-	 * Retrieves the subclaimID associated with this claim, if any.
-	 * 
-	 * @return
-	 */
-	public Long getSubClaimID() {
-		return this.subClaimid;
-	}
 
 	/**
 	 * Gets the width of the claim.
@@ -1243,6 +1219,7 @@ public class Claim {
 	 * @return
 	 */
 	public boolean isNear(Location location, int howNear) {
+
 		Claim claim = new Claim(new Location(this.lesserBoundaryCorner.getWorld(), this.lesserBoundaryCorner.getBlockX() - howNear, this.lesserBoundaryCorner.getBlockY(), this.lesserBoundaryCorner.getBlockZ() - howNear), new Location(this.greaterBoundaryCorner.getWorld(), this.greaterBoundaryCorner.getBlockX() + howNear, this.greaterBoundaryCorner.getBlockY(), this.greaterBoundaryCorner.getBlockZ() + howNear), "", new String[] {}, new String[] {}, new String[] {}, new String[] {}, null, false);
 
 		return claim.contains(location, false, true);
