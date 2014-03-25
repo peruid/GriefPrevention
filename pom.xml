@@ -2,7 +2,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>me.ryanhamshire</groupId>
     <artifactId>GriefPrevention</artifactId>
-    <version>7.8#1c8a689835-1.7.2-dev</version>
+    <version>7.8#f8cd447-1.7.2-dev</version>
     <name>GriefPrevention</name>
 	<url>http://dev.bukkit.org/bukkit-plugins/grief-prevention/</url>
 
