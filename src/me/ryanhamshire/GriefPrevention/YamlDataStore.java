@@ -102,7 +102,7 @@ public class YamlDataStore extends DataStore {
         serverConfig = YamlConfiguration.loadConfiguration(new File(SERVER_FILENAME));
 
         // Initialize Claim ID if needed
-        if (!serverConfig.isLong(NEXTCLAIMID_PATH)) {
+        if (!serverConfig.isSet(NEXTCLAIMID_PATH)) {
             serverConfig.set(NEXTCLAIMID_PATH, 0);
         }
     }
@@ -396,8 +396,7 @@ public class YamlDataStore extends DataStore {
 
     @Override
     void incrementNextClaimID() {
-        this.nextClaimID++;
-        setNextClaimID(this.nextClaimID);
+        setNextClaimID(++this.nextClaimID);
     }
 
     @Override
