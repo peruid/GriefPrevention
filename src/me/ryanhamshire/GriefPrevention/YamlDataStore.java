@@ -262,7 +262,7 @@ public class YamlDataStore extends DataStore {
         playerWriter.set(ACCRUEDBLOCKS_PATH, playerData.accruedClaimBlocks);
 
         // Write the bonus claim blocks
-        playerWriter.set(BONUSBLOCKS_PATH, playerData.accruedClaimBlocks);
+        playerWriter.set(BONUSBLOCKS_PATH, playerData.bonusClaimBlocks);
 
         // Write the inventory clear bit
         playerWriter.set(CLEARINVENTORY_PATH, playerData.ClearInventoryOnJoin);
