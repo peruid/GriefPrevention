@@ -174,7 +174,7 @@ public class YamlDataStore extends DataStore {
 
     @Override
     public boolean deletePlayerData(String playerName) {
-        playerConfig.set(playerName, null);
+        playerConfig.set(playerName.toLowerCase(), null);
         return false;
     }
 
@@ -190,6 +190,7 @@ public class YamlDataStore extends DataStore {
 
     @Override
     PlayerData getPlayerDataFromStorage(String playerName) {
+        playerName = playerName.toLowerCase();
         PlayerData pData = new PlayerData();
 
         // Create a new player data object if it doesn't exist
@@ -240,6 +241,7 @@ public class YamlDataStore extends DataStore {
         if (playerName == null || playerName.isEmpty()) {
             return;
         }
+        playerName = playerName.toLowerCase();
 
         // Create the configuration section if it does not exist
         ConfigurationSection playerWriter;
@@ -260,7 +262,7 @@ public class YamlDataStore extends DataStore {
         playerWriter.set(ACCRUEDBLOCKS_PATH, playerData.accruedClaimBlocks);
 
         // Write the bonus claim blocks
-        playerWriter.set(BONUSBLOCKS_PATH, playerData.accruedClaimBlocks);
+        playerWriter.set(BONUSBLOCKS_PATH, playerData.bonusClaimBlocks);
 
         // Write the inventory clear bit
         playerWriter.set(CLEARINVENTORY_PATH, playerData.ClearInventoryOnJoin);
@@ -268,7 +270,7 @@ public class YamlDataStore extends DataStore {
 
     @Override
     public boolean hasPlayerData(String playerName) {
-        return playerConfig.isConfigurationSection(playerName);
+        return playerConfig.isConfigurationSection(playerName.toLowerCase());
     }
 
     @Override
