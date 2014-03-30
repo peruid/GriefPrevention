@@ -180,7 +180,7 @@ public class YamlDataStore extends DataStore {
 
     @Override
     public List<PlayerData> getAllPlayerData() {
-        List<PlayerData> pData = new ArrayList<>();
+        List<PlayerData> pData = new ArrayList<PlayerData>();
 
         for (String player : playerConfig.getKeys(false)) {
             pData.add(this.getPlayerData(player));
@@ -356,10 +356,10 @@ public class YamlDataStore extends DataStore {
         // Write the trusted players
         // There is a cleaner way to do this, but it would mean adding getters in Claim
         // Maybe a future enahancement later
-        List<String> builders = new ArrayList<>();
-        List<String> containers = new ArrayList<>();
-        List<String> accessors = new ArrayList<>();
-        List<String> managers = new ArrayList<>();
+        List<String> builders = new ArrayList<String>();
+        List<String> containers = new ArrayList<String>();
+        List<String> accessors = new ArrayList<String>();
+        List<String> managers = new ArrayList<String>();
 
         claim.getPermissions(builders, containers, accessors, managers);
 
@@ -375,7 +375,7 @@ public class YamlDataStore extends DataStore {
         // It's ok to do this for any claim type,
         // If it's a subdivision, it will be an empty list
         // Recursion for the win!
-        List<Long> children = new ArrayList<>();
+        List<Long> children = new ArrayList<Long>();
         for(Claim child : claim.children) {
             children.add(child.getID());
             writeClaimToStorage(child);

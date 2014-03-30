@@ -998,6 +998,15 @@ public class GriefPrevention extends JavaPlugin {
 				GriefPrevention.AddLogEntry(e.getMessage());
 			}
 		}
+        else if(this.config_Storage_Kind.equalsIgnoreCase("yaml")){
+            try {
+                this.dataStore = new YamlDataStore();
+            }
+            catch(Exception e){
+                GriefPrevention.AddLogEntry("Unable to initialize the YAML data store.  Details:");
+                GriefPrevention.AddLogEntry(e.getMessage());
+            }
+        }
         //start the command handler.
         cmdHandler = new CommandHandler();
 		// start the recurring cleanup event for entities in creative worlds, if enabled.
