@@ -19,7 +19,6 @@
 package me.ryanhamshire.GriefPrevention;
 
 import java.io.*;
-import java.nio.channels.FileChannel;
 import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -28,6 +27,11 @@ import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
 
+import me.ryanhamshire.GriefPrevention.Claim;
+import me.ryanhamshire.GriefPrevention.Debugger;
+import me.ryanhamshire.GriefPrevention.GriefPrevention;
+import me.ryanhamshire.GriefPrevention.PlayerData;
+import me.ryanhamshire.GriefPrevention.DataStore;
 import me.ryanhamshire.GriefPrevention.exceptions.WorldNotFoundException;
 
 import org.bukkit.Bukkit;
@@ -37,10 +41,10 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
-import org.bukkit.event.entity.EntityDamageEvent.DamageCause;
 
 //manages data stored in the file system
 public class FlatFileDataStore extends DataStore {
+    public static String ConfigDescriptor = "flat";
 	public final static String claimDataFolderPath = dataLayerFolderPath + File.separator + "ClaimData";
 	public final static String nextClaimIdFilePath = claimDataFolderPath + File.separator + "_nextClaimID";
 	public final static String playerDataFolderPath = dataLayerFolderPath + File.separator + "PlayerData";
@@ -78,7 +82,8 @@ public class FlatFileDataStore extends DataStore {
 		this.initialize(Source, Target);
 	}
 
-	@Override
+
+    @Override
 	synchronized void close() {
 		super.close();
 	}
@@ -100,6 +105,7 @@ public class FlatFileDataStore extends DataStore {
 			}
 		}
 	}
+
 
 	@Override
 	public boolean deletePlayerData(String playerName) {

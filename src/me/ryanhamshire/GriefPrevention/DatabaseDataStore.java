@@ -38,7 +38,8 @@ import org.bukkit.configuration.ConfigurationSection;
 
 //manages data stored in the file system
 public class DatabaseDataStore extends DataStore {
-	private Connection databaseConnection = null;
+    public static String ConfigDescriptor = "mysql";
+    private Connection databaseConnection = null;
 
 	private String databaseUrl;
 	private String password;
@@ -49,7 +50,8 @@ public class DatabaseDataStore extends DataStore {
 
 	}
 
-	@Override
+
+    @Override
 	synchronized void close() {
 		// System.out.println("DatabaseStore closing: Claims #" +
 		// this.claims.size());
@@ -398,7 +400,7 @@ public class DatabaseDataStore extends DataStore {
 	@Override
 	void WorldLoaded(World loading) {
 		try {
-            Debugger.Write("Database:Loading claims in world:" + loading.getName(),DebugLevel.Verbose);
+            Debugger.Write("Database:Loading claims in world:" + loading.getName(), DebugLevel.Verbose);
 			Statement statement = databaseConnection.createStatement();
 
             ResultSet results = statement.executeQuery("SELECT * FROM griefprevention_claimdata where parentid=-1 AND lessercorner LIKE \"" + loading.getName() + ";%\";");

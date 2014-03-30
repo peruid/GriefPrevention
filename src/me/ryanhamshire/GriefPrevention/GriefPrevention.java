@@ -23,6 +23,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -66,7 +67,6 @@ import org.bukkit.entity.Pig;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Sheep;
 import org.bukkit.entity.Wolf;
-import org.bukkit.event.world.WorldLoadEvent;
 import org.bukkit.event.world.WorldUnloadEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
@@ -989,24 +989,41 @@ public class GriefPrevention extends JavaPlugin {
 				return;
 			}
 		}
+        else {
+            Class[] StoreClasses = new Class[]{FlatFileDataStore.class,YamlDataStore.class};
+            boolean foundstore = false;
+            for(Class lookclass:StoreClasses){
+                try {
+                Field m = lookclass.getField("ConfigDescriptor");
 
-		else if (this.config_Storage_Kind.equalsIgnoreCase("flat")) {
-			try {
-				this.dataStore = new FlatFileDataStore();
-			} catch (Exception e) {
-				GriefPrevention.AddLogEntry("Unable to initialize the file system data store.  Details:");
-				GriefPrevention.AddLogEntry(e.getMessage());
-			}
-		}
-        else if(this.config_Storage_Kind.equalsIgnoreCase("yaml")){
-            try {
-                this.dataStore = new YamlDataStore();
+                    if(m!=null && Modifier.isStatic(m.getModifiers())){
+                    if(m.getType()==String.class){
+                        String getdescriptor  = (String)m.get(null);
+                        if(this.config_Storage_Kind.equalsIgnoreCase(getdescriptor)){
+                            try {
+                            this.dataStore = (DataStore)lookclass.newInstance();
+                                foundstore=true;
+                                break;
+                            }
+                            catch(Exception exx){
+                                Debugger.Write("Failed to instantiate DataStore:" + getdescriptor,DebugLevel.Verbose);
+                            }
+                        }
+                    }
+
+                }
+                }
+                catch(Exception all){
+
+                }
             }
-            catch(Exception e){
-                GriefPrevention.AddLogEntry("Unable to initialize the YAML data store.  Details:");
-                GriefPrevention.AddLogEntry(e.getMessage());
+            if(!foundstore){
+                Debugger.Write("Failed to find or instantiate DataStore, " + this.config_Storage_Kind,DebugLevel.Verbose);
             }
+
+
         }
+
         //start the command handler.
         cmdHandler = new CommandHandler();
 		// start the recurring cleanup event for entities in creative worlds, if enabled.
