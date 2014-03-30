@@ -40,6 +40,8 @@ import org.bukkit.inventory.ItemStack;
 
 //singleton class which manages all GriefPrevention data (except for config options)
 public abstract class DataStore {
+
+
 	public final static String dataLayerFolderPath = "plugins" + File.separator + "GriefPrevention";
 	public final static String configFilePath = dataLayerFolderPath + File.separator + "config.yml";
 	
@@ -78,7 +80,6 @@ public abstract class DataStore {
 
 	// timestamp for each siege cooldown to end
 	private HashMap<String, Long> siegeCooldownRemaining = new HashMap<String, Long>();
-
 
 
 	/**
