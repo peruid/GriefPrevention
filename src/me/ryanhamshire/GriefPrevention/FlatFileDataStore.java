@@ -22,10 +22,8 @@ import java.io.*;
 import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 import me.ryanhamshire.GriefPrevention.Claim;
 import me.ryanhamshire.GriefPrevention.Debugger;
@@ -365,6 +363,49 @@ public class FlatFileDataStore extends DataStore {
 		}
 	}
 
+    @Override
+    public ConcurrentHashMap<String, Integer> getAllGroupBonusBlocks() {
+        // load group data into memory
+        File playerDataFolder = new File(playerDataFolderPath);
+        File[] files = playerDataFolder.listFiles();
+        ConcurrentHashMap<String, Integer> groupData = new ConcurrentHashMap<String,Integer>();
+
+        for (int i = 0; i < files.length; i++) {
+            File file = files[i];
+            if (!file.isFile())
+                continue; // avoids folders
+
+            // all group data files start with a dollar sign. ignoring the rest,
+            // which are player data files.
+            if (!file.getName().startsWith("$"))
+                continue;
+
+            String groupName = file.getName().substring(1);
+            if (groupName == null || groupName.isEmpty())
+                continue; // defensive coding, avoid unlikely cases
+
+            BufferedReader inStream = null;
+
+            try {
+                inStream = new BufferedReader(new FileReader(file.getAbsolutePath()));
+                String line = inStream.readLine();
+
+                int groupBonusBlocks = Integer.parseInt(line);
+
+                groupData.put(groupName, groupBonusBlocks);
+            } catch (Exception e) {
+                GriefPrevention.AddLogEntry("Unable to load group bonus block data from file \"" + file.getName() + "\": " + e.getMessage());
+            }
+
+            try {
+                if (inStream != null)
+                    inStream.close();
+            } catch (IOException exception) {
+            }
+        }
+        return groupData;
+    }
+
 	@Override
 	void initialize(ConfigurationSection Source, ConfigurationSection Target) throws Exception {
 
@@ -373,40 +414,7 @@ public class FlatFileDataStore extends DataStore {
 		new File(claimDataFolderPath).mkdirs();
 
 		// load group data into memory
-		File playerDataFolder = new File(playerDataFolderPath);
-		File[] files = playerDataFolder.listFiles();
-		for (int i = 0; i < files.length; i++) {
-			File file = files[i];
-			if (!file.isFile())
-				continue; // avoids folders
-
-			// all group data files start with a dollar sign. ignoring the rest,
-			// which are player data files.
-			if (!file.getName().startsWith("$"))
-				continue;
-
-			String groupName = file.getName().substring(1);
-			if (groupName == null || groupName.isEmpty())
-				continue; // defensive coding, avoid unlikely cases
-
-			BufferedReader inStream = null;
-			try {
-				inStream = new BufferedReader(new FileReader(file.getAbsolutePath()));
-				String line = inStream.readLine();
-
-				int groupBonusBlocks = Integer.parseInt(line);
-
-				this.permissionToBonusBlocksMap.put(groupName, groupBonusBlocks);
-			} catch (Exception e) {
-				GriefPrevention.AddLogEntry("Unable to load group bonus block data from file \"" + file.getName() + "\": " + e.getMessage());
-			}
-
-			try {
-				if (inStream != null)
-					inStream.close();
-			} catch (IOException exception) {
-			}
-		}
+        this.permissionToBonusBlocksMap = getAllGroupBonusBlocks();
 
 		// load next claim number from file
 		File nextClaimIdFile = new File(nextClaimIdFilePath);
@@ -433,7 +441,7 @@ public class FlatFileDataStore extends DataStore {
 		// load claims data into memory
 		// get a list of all the files in the claims data folder
 		File claimDataFolder = new File(claimDataFolderPath);
-		files = claimDataFolder.listFiles();
+		File[] files = claimDataFolder.listFiles();
 
 		for (int i = 0; i < files.length; i++) {
 			if (files[i].isFile()) // avoids folders

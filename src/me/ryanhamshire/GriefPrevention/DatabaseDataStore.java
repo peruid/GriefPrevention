@@ -28,6 +28,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.ConcurrentHashMap;
 
 import me.ryanhamshire.GriefPrevention.Debugger.DebugLevel;
 import me.ryanhamshire.GriefPrevention.exceptions.WorldNotFoundException;
@@ -51,7 +52,7 @@ public class DatabaseDataStore extends DataStore {
 	}
 
 
-    @Override
+	@Override
 	synchronized void close() {
 		// System.out.println("DatabaseStore closing: Claims #" +
 		// this.claims.size());
@@ -184,6 +185,36 @@ public class DatabaseDataStore extends DataStore {
 		this.setNextClaimID(this.nextClaimID + 1);
 	}
 
+    @Override
+    public ConcurrentHashMap<String, Integer> getAllGroupBonusBlocks() {
+        // load group data into memory
+        ConcurrentHashMap<String, Integer> bonuses = new ConcurrentHashMap<String,Integer>();
+        try {
+            Statement statement = databaseConnection.createStatement();
+            ResultSet results = statement.executeQuery("SELECT * FROM griefprevention_playerdata;");
+
+
+            while (results.next()) {
+                String name = results.getString("name");
+
+                // ignore non-groups. all group names start with a dollar sign.
+                if (!name.startsWith("$"))
+                    continue;
+
+                String groupName = name.substring(1);
+                if (groupName == null || groupName.isEmpty())
+                    continue; // defensive coding, avoid unlikely cases
+
+                int groupBonusBlocks = results.getInt("bonusblocks");
+
+                bonuses.put(groupName, groupBonusBlocks);
+            }
+        } catch (SQLException ex) {
+            return null;
+        }
+        return bonuses;
+    }
+
 	@Override
 	void initialize(ConfigurationSection Source, ConfigurationSection Target) throws Exception {
 
@@ -269,27 +300,11 @@ public class DatabaseDataStore extends DataStore {
 		}
 
 		// load group data into memory
-		Statement statement = databaseConnection.createStatement();
-		ResultSet results = statement.executeQuery("SELECT * FROM griefprevention_playerdata;");
-
-		while (results.next()) {
-			String name = results.getString("name");
-
-			// ignore non-groups. all group names start with a dollar sign.
-			if (!name.startsWith("$"))
-				continue;
-
-			String groupName = name.substring(1);
-			if (groupName == null || groupName.isEmpty())
-				continue; // defensive coding, avoid unlikely cases
-
-			int groupBonusBlocks = results.getInt("bonusblocks");
-
-			this.permissionToBonusBlocksMap.put(groupName, groupBonusBlocks);
-		}
+    	this.permissionToBonusBlocksMap = getAllGroupBonusBlocks();
 
 		// load next claim number into memory
-		results = statement.executeQuery("SELECT * FROM griefprevention_nextclaimid;");
+        Statement statement = databaseConnection.createStatement();
+        ResultSet results = statement.executeQuery("SELECT * FROM griefprevention_nextclaimid;");
 
 		// if there's nothing yet, add it
 		if (!results.next()) {
