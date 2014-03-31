@@ -4,6 +4,7 @@ import org.bukkit.World;
 
 import java.util.List;
 import java.util.Queue;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
 
 /**
@@ -34,6 +35,10 @@ public class ThreadedDataStore extends DataStore{
         }
 
 
+    }
+
+    public DataStoreType getType() {
+        return DataStoreType.THREADED;
     }
 
     public ThreadedDataStore(DataStore Internal){
@@ -73,6 +78,11 @@ public class ThreadedDataStore extends DataStore{
     @Override
     public boolean hasPlayerData(String playerName) {
         return false;  //To change body of implemented methods use File | Settings | File Templates.
+    }
+
+    @Override
+    public ConcurrentHashMap<String, Integer> getAllGroupBonusBlocks() {
+        return null;
     }
 
     @Override

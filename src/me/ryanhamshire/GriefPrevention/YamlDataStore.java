@@ -1,11 +1,13 @@
 package me.ryanhamshire.GriefPrevention;
 
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
-import org.bukkit.entity.Player;
+import org.bukkit.plugin.Plugin;
+import org.bukkit.scheduler.BukkitRunnable;
 
 import java.io.File;
 import java.io.IOException;
@@ -13,6 +15,7 @@ import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class YamlDataStore extends DataStore {
     // YAML Paths
@@ -44,6 +47,7 @@ public class YamlDataStore extends DataStore {
     // Server constants
     private final static String NEXTCLAIMID_PATH = "NextClaimId";
     private final static String GROUPBONUS_PATH = "GroupBonusBlocks";
+    private final static String AUTOSAVE_PATH = "AutoSaveInterval";
 
     private YamlConfiguration claimConfig;
     private YamlConfiguration playerConfig;
@@ -61,11 +65,36 @@ public class YamlDataStore extends DataStore {
         this.initialize(Source, Target);
     }
 
+    public DataStoreType getType() {
+        return DataStoreType.YAML;
+    }
+
+    private class AutoSave extends BukkitRunnable {
+        @Override
+        public void run() {
+            Debugger.Write("Running AutoSave.", Debugger.DebugLevel.Informational);
+            saveAll();
+            Debugger.Write("AutoSave Complete.", Debugger.DebugLevel.Informational);
+        }
+    }
+
     private static FileConfiguration getSourceCfg() {
-        File f = new File(DataStore.dataLayerFolderPath + "yaml.yml");
-        if (f.exists())
-            return YamlConfiguration.loadConfiguration(f);
-        return new YamlConfiguration();
+        File f = new File(DataStore.dataLayerFolderPath + File.separator + "yamlconfig.yml");
+        YamlConfiguration config;
+        if (f.exists()) {
+            config =  YamlConfiguration.loadConfiguration(f);
+        } else {
+            config = new YamlConfiguration();
+        }
+        if(!config.isSet(AUTOSAVE_PATH)) {
+            config.set(AUTOSAVE_PATH, 60);
+            try {
+                config.save(f);
+            } catch (IOException ex) {
+                Debugger.Write("Failed to create DataStore configuration file.", Debugger.DebugLevel.Errors);
+            }
+        }
+        return config;
     }
 
     private static FileConfiguration getTargetCfg() {
@@ -154,16 +183,18 @@ public class YamlDataStore extends DataStore {
         super.initialize(Source, Target);
         reloadAll();
         // load group data into memory
-        if (serverConfig.isConfigurationSection(GROUPBONUS_PATH)) {
-            ConfigurationSection groupReader = serverConfig.getConfigurationSection(GROUPBONUS_PATH);
-
-            for(String s : groupReader.getKeys(false)) {
-                this.permissionToBonusBlocksMap.put(s.replace("-", "."), groupReader.getInt(s));
-            }
-        }
+        this.permissionToBonusBlocksMap = getAllGroupBonusBlocks();
 
         // load next claim number into memory
         this.nextClaimID = serverConfig.getLong(NEXTCLAIMID_PATH);
+
+        // Start the auto save feature
+        // use 0 to disable it and only save on close
+        int timer = getSourceCfg().getInt(AUTOSAVE_PATH);
+        if(timer > 0) {
+            Plugin plugin = Bukkit.getPluginManager().getPlugin("GriefPrevention");
+            new AutoSave().runTaskTimer(plugin, timer * 1200, timer * 1200);
+        }
     }
 
     @Override
@@ -407,6 +438,21 @@ public class YamlDataStore extends DataStore {
     }
 
     @Override
+    public ConcurrentHashMap<String, Integer> getAllGroupBonusBlocks() {
+        ConcurrentHashMap<String, Integer> bonuses = new ConcurrentHashMap<>();
+
+        if (!serverConfig.isConfigurationSection(GROUPBONUS_PATH)) {
+            return bonuses;
+        }
+
+        ConfigurationSection groupReader =  serverConfig.getConfigurationSection(GROUPBONUS_PATH);
+        for(String g : groupReader.getKeys(false)) {
+            bonuses.put(g.replace("-", "."), groupReader.getInt(g));
+        }
+        return bonuses;
+    }
+
+    @Override
     void saveGroupBonusBlocks(String groupName, int amount) {
         ConfigurationSection groupWriter;
         if (serverConfig.isConfigurationSection(GROUPBONUS_PATH)) {
@@ -417,29 +463,5 @@ public class YamlDataStore extends DataStore {
 
         // Periods are key delimiters in YAML, need to use something else
         groupWriter.set(groupName.replace('.', '-'), amount);
-    }
-
-    @Override
-    public int getGroupBonusBlocks(String playerName) {
-        int totalBonusBlocks = 0;
-        if (!serverConfig.isConfigurationSection(GROUPBONUS_PATH)) {
-            return totalBonusBlocks;
-        }
-
-
-        ConfigurationSection groupReader = serverConfig.getConfigurationSection(GROUPBONUS_PATH);
-        Player player = GriefPrevention.instance.getServer().getPlayer(playerName);
-        if (player == null) {
-            return totalBonusBlocks;
-        }
-
-        for(String s : groupReader.getKeys(false)) {
-            // Periods are key delimiters in YAML, need to use something else
-            if(player.hasPermission(s.replace('-', '.'))) {
-                totalBonusBlocks += serverConfig.getInt(s);
-            }
-        }
-
-        return totalBonusBlocks;
     }
 }

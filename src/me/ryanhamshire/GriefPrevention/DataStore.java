@@ -43,6 +43,10 @@ public abstract class DataStore {
 	public final static String dataLayerFolderPath = "plugins" + File.separator + "GriefPrevention";
 	public final static String configFilePath = dataLayerFolderPath + File.separator + "config.yml";
 	
+    public enum DataStoreType {
+        FLAT, MYSQL, YAML, THREADED;
+    }
+
 
 	// path information, for where stuff stored on disk is well... stored
 	/**
@@ -79,7 +83,7 @@ public abstract class DataStore {
 	// timestamp for each siege cooldown to end
 	private HashMap<String, Long> siegeCooldownRemaining = new HashMap<String, Long>();
 
-
+    public abstract DataStoreType getType();
 
 	/**
 	 * Adds a claim to the datastore, making it an effective claim.
@@ -1039,6 +1043,8 @@ public abstract class DataStore {
 
 	public abstract boolean hasPlayerData(String playerName);
 
+    public abstract ConcurrentHashMap<String, Integer> getAllGroupBonusBlocks();
+
 	// increments the claim ID and updates secondary storage to be sure it's
 	// saved
 	abstract void incrementNextClaimID();
@@ -1654,35 +1660,71 @@ public abstract class DataStore {
 
 	abstract void writeClaimToStorage(Claim claim);
 
+    public final DataStore importDataStore(DataStore Source) throws IllegalArgumentException {
+        Debugger.Write("Importing DataStore from " + Source.getType().toString() + " to " + this.getType().toString() + ".", DebugLevel.Informational);
+        if(Source.getType() == this.getType()) {
+            throw new IllegalArgumentException("The source DataStore may not be of the same type.");
+        }
+
+        if(this.getNextClaimID() < Source.getNextClaimID()) {
+            Debugger.Write("Importing Next Claim ID.", DebugLevel.Informational);
+            this.setNextClaimID(Source.getNextClaimID());
+        }
+
+        //transfer claims from Source to target.
+        //conflicts will be ignored
+        ForceLoadAllClaims(Source);
+        for(Claim cc : Source.getClaimArray()){
+            Debugger.Write("Importing claim " + cc.getID() + ".", DebugLevel.Informational);
+            this.addClaim(cc);
+        }
+
+        // Migrate the player data
+        for(PlayerData p : Source.getAllPlayerData()){
+            //save this PlayerData into the target.
+            Debugger.Write("Importing Player " + p.playerName + ".", DebugLevel.Informational);
+            this.savePlayerData(p.playerName, p);
+        }
+
+        Map<String, Integer> bonuses = Source.getAllGroupBonusBlocks();
+        for(String s : bonuses.keySet()) {
+            Debugger.Write("Importing bonus group " + s + ".", DebugLevel.Informational);
+            this.saveGroupBonusBlocks(s, bonuses.get(s));
+        }
+        Debugger.Write("Importing Complete", DebugLevel.Informational);
+        return this;
+    }
+
 	public static void migrateData(DataStore Source,DataStore Target){
 		migrateData(new DataStore[]{Source},new DataStore[]{Target});
 	}
-	
-	public static void migrateData(DataStore[] Sources,DataStore[] Targets){
-		
-		//migrate from the given Source to the given Target.
-		//first try to force all claims to be loaded in the Source DataStore.
-		for(DataStore Source:Sources){
-			
-				
-			ForceLoadAllClaims(Source);
-			
-			for(DataStore Target:Targets){
-				//transfer claims from Source to target.
-				for(Claim cc:Source.claims){
-					Target.addClaim(cc);
-				}
-				
-				for(PlayerData p:Source.getAllPlayerData()){
-					//save this PlayerData into the target.
-					
-				    Target.savePlayerData(p.playerName, p);
-				    
-				}
-			}
-		}
-		
-		
-	}
-	
+
+
+    public static void migrateData(DataStore[] Sources,DataStore[] Targets){
+
+        //migrate from the given Source to the given Target.
+        //first try to force all claims to be loaded in the Source DataStore.
+        for(DataStore Source:Sources){
+
+
+            ForceLoadAllClaims(Source);
+
+            for(DataStore Target:Targets){
+                //transfer claims from Source to target.
+                for(Claim cc:Source.claims){
+                    Target.addClaim(cc);
+                }
+
+                for(PlayerData p:Source.getAllPlayerData()){
+                    //save this PlayerData into the target.
+
+                    Target.savePlayerData(p.playerName, p);
+
+                }
+            }
+        }
+
+
+    }
+
 }
