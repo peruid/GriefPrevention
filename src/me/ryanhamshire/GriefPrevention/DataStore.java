@@ -1360,15 +1360,13 @@ public abstract class DataStore {
 	}
 
 	String locationToString(Location location) {
-		StringBuilder stringBuilder = new StringBuilder(location.getWorld().getName());
-		stringBuilder.append(locationStringDelimiter);
-		stringBuilder.append(location.getBlockX());
-		stringBuilder.append(locationStringDelimiter);
-		stringBuilder.append(location.getBlockY());
-		stringBuilder.append(locationStringDelimiter);
-		stringBuilder.append(location.getBlockZ());
-
-		return stringBuilder.toString();
+		return location.getWorld().getName()
+                + locationStringDelimiter
+		        + location.getBlockX()
+		        + locationStringDelimiter
+		        + location.getBlockY()
+		        + locationStringDelimiter
+                + location.getBlockZ();
 	}
 
 	/**
