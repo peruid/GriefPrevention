@@ -306,8 +306,7 @@ public abstract class DataStore {
 			}
 		}
 
-		for (int i = 0; i < claimsToCheck.size(); i++) {
-			Claim otherClaim = claimsToCheck.get(i);
+		for (Claim otherClaim : claimsToCheck) {
 
 			// if we find an existing claim which will be overlapped
 			if (otherClaim.overlaps(newClaim)) {
@@ -480,8 +479,7 @@ public abstract class DataStore {
 		}
 
 		// delete them one by one
-		for (int i = 0; i < claimsToDelete.size(); i++) {
-			Claim claim = claimsToDelete.get(i);
+		for (Claim claim : claimsToDelete) {
 			claim.removeSurfaceFluids(null);
 
 			this.deleteClaim(claim);
@@ -802,8 +800,7 @@ public abstract class DataStore {
 
 		// otherwise, search all existing claims in the chunk until we find the
 		// right claim
-		for (int i = 0; i < aclaims.size(); i++) {
-			Claim claim = aclaims.get(i);
+		for (Claim claim : aclaims) {
 			if (claim.parent != null)
 				continue;
 			//
@@ -1470,17 +1467,17 @@ public abstract class DataStore {
 			List<String> managers = new ArrayList<String>();
 			claim.getPermissions(builders, containers, accessors, managers);
 
-			for (int i = 0; i < builders.size(); i++)
-				result.claim.setPermission(builders.get(i), ClaimPermission.Build);
+			for (String b : builders)
+				result.claim.setPermission(b, ClaimPermission.Build);
 
-			for (int i = 0; i < containers.size(); i++)
-				result.claim.setPermission(containers.get(i), ClaimPermission.Inventory);
+			for (String c : containers)
+				result.claim.setPermission(c, ClaimPermission.Inventory);
 
-			for (int i = 0; i < accessors.size(); i++)
-				result.claim.setPermission(accessors.get(i), ClaimPermission.Access);
+			for (String a : accessors)
+				result.claim.setPermission(a, ClaimPermission.Access);
 
-			for (int i = 0; i < managers.size(); i++) {
-				result.claim.addManager(managers.get(i));
+			for (String m : managers) {
+				result.claim.addManager(m);
 				// result.claim.managers.add(managers.get(i));
 			}
 
