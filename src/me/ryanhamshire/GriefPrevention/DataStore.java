@@ -107,7 +107,7 @@ public abstract class DataStore {
 
 
 		// add it and mark it as added
-		int j = 0;
+		//int j = 0;
 		this.claims.add(newClaim);
 
 		newClaim.inDataStore = true;
@@ -250,7 +250,7 @@ public abstract class DataStore {
         if(parent!=null){
             Debugger.Write("Creating Subclaim of Claim with ID:" + parent.getID(),DebugLevel.Verbose);
         }
-		Player gotplayer = Bukkit.getPlayer(ownerName);
+		//Player gotplayer = Bukkit.getPlayer(ownerName);
 		// determine small versus big inputs
 		if (x1 < x2) {
 			smallx = x1;
@@ -306,8 +306,7 @@ public abstract class DataStore {
 			}
 		}
 
-		for (int i = 0; i < claimsToCheck.size(); i++) {
-			Claim otherClaim = claimsToCheck.get(i);
+		for (Claim otherClaim : claimsToCheck) {
 
 			// if we find an existing claim which will be overlapped
 			if (otherClaim.overlaps(newClaim)) {
@@ -334,16 +333,16 @@ public abstract class DataStore {
                 }
 
 			}
-		} else {
-			/*
+		} /* else {
+			*
 			 * ClaimResizeEvent claimevent = new ClaimResizeEvent(oldclaim,
 			 * newClaim
 			 * .lesserBoundaryCorner,newClaim.greaterBoundaryCorner,gotplayer);
 			 * Bukkit.getServer().getPluginManager().callEvent(claimevent);
 			 * if(claimevent.isCancelled()) { result.succeeded =
 			 * CreateClaimResult.Result.Canceled; return result; }
-			 */
-		}
+			 *
+		}*/
 		// otherwise add this new claim to the data store to make it effective
 		this.addClaim(newClaim);
 
@@ -480,8 +479,7 @@ public abstract class DataStore {
 		}
 
 		// delete them one by one
-		for (int i = 0; i < claimsToDelete.size(); i++) {
-			Claim claim = claimsToDelete.get(i);
+		for (Claim claim : claimsToDelete) {
 			claim.removeSurfaceFluids(null);
 
 			this.deleteClaim(claim);
@@ -554,7 +552,7 @@ public abstract class DataStore {
         for(Player p:Bukkit.getOnlinePlayers()){
 
             Claim playerclaim = GriefPrevention.instance.dataStore.getClaimAt(p.getLocation(),false);
-            boolean dobreak=false;
+            //boolean dobreak=false;
             for(Claim c:siegeData.claims){
                 if(c==playerclaim){
                     PlayersinClaim.add(p);
@@ -666,9 +664,9 @@ public abstract class DataStore {
 					HashMap<Integer, ItemStack> wontFitItems = winner.getInventory().addItem(iterateitem);
 
 					// drop any remainder on the ground at his feet
-					Object[] keys = wontFitItems.keySet().toArray();
+					Set<Integer> keys = wontFitItems.keySet();
 					Location winnerLocation = winner.getLocation();
-					for (Object key : keys) {
+					for (Integer key : keys) {
 						winnerLocation.getWorld().dropItemNaturally(winnerLocation, wontFitItems.get(key));
 					}
 				}
@@ -802,8 +800,7 @@ public abstract class DataStore {
 
 		// otherwise, search all existing claims in the chunk until we find the
 		// right claim
-		for (int i = 0; i < aclaims.size(); i++) {
-			Claim claim = aclaims.get(i);
+		for (Claim claim : aclaims) {
 			if (claim.parent != null)
 				continue;
 			//
@@ -1360,15 +1357,13 @@ public abstract class DataStore {
 	}
 
 	String locationToString(Location location) {
-		StringBuilder stringBuilder = new StringBuilder(location.getWorld().getName());
-		stringBuilder.append(locationStringDelimiter);
-		stringBuilder.append(location.getBlockX());
-		stringBuilder.append(locationStringDelimiter);
-		stringBuilder.append(location.getBlockY());
-		stringBuilder.append(locationStringDelimiter);
-		stringBuilder.append(location.getBlockZ());
-
-		return stringBuilder.toString();
+		return location.getWorld().getName()
+                + locationStringDelimiter
+		        + location.getBlockX()
+		        + locationStringDelimiter
+		        + location.getBlockY()
+		        + locationStringDelimiter
+                + location.getBlockZ();
 	}
 
 	/**
@@ -1466,23 +1461,23 @@ public abstract class DataStore {
 		// if succeeded
 		if (result.succeeded == CreateClaimResult.Result.Success) {
 			// copy permissions from old claim
-			ArrayList<String> builders = new ArrayList<String>();
-			ArrayList<String> containers = new ArrayList<String>();
-			ArrayList<String> accessors = new ArrayList<String>();
-			ArrayList<String> managers = new ArrayList<String>();
+			List<String> builders = new ArrayList<String>();
+			List<String> containers = new ArrayList<String>();
+			List<String> accessors = new ArrayList<String>();
+			List<String> managers = new ArrayList<String>();
 			claim.getPermissions(builders, containers, accessors, managers);
 
-			for (int i = 0; i < builders.size(); i++)
-				result.claim.setPermission(builders.get(i), ClaimPermission.Build);
+			for (String b : builders)
+				result.claim.setPermission(b, ClaimPermission.Build);
 
-			for (int i = 0; i < containers.size(); i++)
-				result.claim.setPermission(containers.get(i), ClaimPermission.Inventory);
+			for (String c : containers)
+				result.claim.setPermission(c, ClaimPermission.Inventory);
 
-			for (int i = 0; i < accessors.size(); i++)
-				result.claim.setPermission(accessors.get(i), ClaimPermission.Access);
+			for (String a : accessors)
+				result.claim.setPermission(a, ClaimPermission.Access);
 
-			for (int i = 0; i < managers.size(); i++) {
-				result.claim.addManager(managers.get(i));
+			for (String m : managers) {
+				result.claim.addManager(m);
 				// result.claim.managers.add(managers.get(i));
 			}
 
@@ -1514,7 +1509,7 @@ public abstract class DataStore {
 		int y2 = Math.max(p1.getBlockY(), p2.getBlockY());
 		int z2 = Math.max(p1.getBlockZ(), p2.getBlockZ());
 
-		return resizeClaim(claim, x1, x1, y1, y2, z1, z2, resizer);
+		return resizeClaim(claim, x1, x2, y1, y2, z1, z2, resizer);
 
 	}
 
