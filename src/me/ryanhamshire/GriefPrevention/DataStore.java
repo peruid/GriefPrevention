@@ -1464,10 +1464,10 @@ public abstract class DataStore {
 		// if succeeded
 		if (result.succeeded == CreateClaimResult.Result.Success) {
 			// copy permissions from old claim
-			ArrayList<String> builders = new ArrayList<String>();
-			ArrayList<String> containers = new ArrayList<String>();
-			ArrayList<String> accessors = new ArrayList<String>();
-			ArrayList<String> managers = new ArrayList<String>();
+			List<String> builders = new ArrayList<String>();
+			List<String> containers = new ArrayList<String>();
+			List<String> accessors = new ArrayList<String>();
+			List<String> managers = new ArrayList<String>();
 			claim.getPermissions(builders, containers, accessors, managers);
 
 			for (int i = 0; i < builders.size(); i++)
