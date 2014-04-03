@@ -107,7 +107,7 @@ public abstract class DataStore {
 
 
 		// add it and mark it as added
-		int j = 0;
+		//int j = 0;
 		this.claims.add(newClaim);
 
 		newClaim.inDataStore = true;
@@ -250,7 +250,7 @@ public abstract class DataStore {
         if(parent!=null){
             Debugger.Write("Creating Subclaim of Claim with ID:" + parent.getID(),DebugLevel.Verbose);
         }
-		Player gotplayer = Bukkit.getPlayer(ownerName);
+		//Player gotplayer = Bukkit.getPlayer(ownerName);
 		// determine small versus big inputs
 		if (x1 < x2) {
 			smallx = x1;
@@ -334,16 +334,16 @@ public abstract class DataStore {
                 }
 
 			}
-		} else {
-			/*
+		} /* else {
+			*
 			 * ClaimResizeEvent claimevent = new ClaimResizeEvent(oldclaim,
 			 * newClaim
 			 * .lesserBoundaryCorner,newClaim.greaterBoundaryCorner,gotplayer);
 			 * Bukkit.getServer().getPluginManager().callEvent(claimevent);
 			 * if(claimevent.isCancelled()) { result.succeeded =
 			 * CreateClaimResult.Result.Canceled; return result; }
-			 */
-		}
+			 *
+		}*/
 		// otherwise add this new claim to the data store to make it effective
 		this.addClaim(newClaim);
 
@@ -554,7 +554,7 @@ public abstract class DataStore {
         for(Player p:Bukkit.getOnlinePlayers()){
 
             Claim playerclaim = GriefPrevention.instance.dataStore.getClaimAt(p.getLocation(),false);
-            boolean dobreak=false;
+            //boolean dobreak=false;
             for(Claim c:siegeData.claims){
                 if(c==playerclaim){
                     PlayersinClaim.add(p);
@@ -666,9 +666,9 @@ public abstract class DataStore {
 					HashMap<Integer, ItemStack> wontFitItems = winner.getInventory().addItem(iterateitem);
 
 					// drop any remainder on the ground at his feet
-					Object[] keys = wontFitItems.keySet().toArray();
+					Set<Integer> keys = wontFitItems.keySet();
 					Location winnerLocation = winner.getLocation();
-					for (Object key : keys) {
+					for (Integer key : keys) {
 						winnerLocation.getWorld().dropItemNaturally(winnerLocation, wontFitItems.get(key));
 					}
 				}
@@ -1514,7 +1514,7 @@ public abstract class DataStore {
 		int y2 = Math.max(p1.getBlockY(), p2.getBlockY());
 		int z2 = Math.max(p1.getBlockZ(), p2.getBlockZ());
 
-		return resizeClaim(claim, x1, x1, y1, y2, z1, z2, resizer);
+		return resizeClaim(claim, x1, x2, y1, y2, z1, z2, resizer);
 
 	}
 
