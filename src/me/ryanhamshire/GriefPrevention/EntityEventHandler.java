@@ -210,7 +210,7 @@ class EntityEventHandler implements Listener {
         else if (damageSource instanceof EnderPearl) {
                 EnderPearl p = (EnderPearl)damageSource;
                 if (p.getShooter() instanceof Player) {
-                    attacker = (Player)p;
+                    attacker = (Player)p.getShooter();
                 }
             }
 		else if (damageSource instanceof Arrow) {
