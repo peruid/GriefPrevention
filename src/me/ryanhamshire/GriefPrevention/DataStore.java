@@ -742,6 +742,14 @@ public abstract class DataStore {
 		return loc.getWorld().getName() + ";" + chunkX + "," + chunkZ;
 	}
 
+    /**
+     * retrieves a claim via it's UUID.
+     * @param id UUID to retrieve.
+     * @return Claim with the given UUID, or null if there aren't any with that UUID.
+     */
+    synchronized public Claim getClaim(UUID id){
+        return claims.get(id);
+    }
 	/**
 	 * Gets a claim by it's ID.
 	 * 

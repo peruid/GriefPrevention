@@ -491,7 +491,7 @@ public class DatabaseDataStore extends DataStore {
 					// look for any subdivisions for this claim
 					Statement statement2 = this.databaseConnection.createStatement();
 
-					ResultSet childResults = statement2.executeQuery("SELECT * FROM griefprevention_claimdata WHERE parentid=" + topLevelClaim.id + ";");
+					ResultSet childResults = statement2.executeQuery("SELECT * FROM griefprevention_claimdata WHERE parentid=" + topLevelClaim.id + " OR (NOT parentuid='' AND parentuid='" + topLevelClaim.getUUID().toString() +"'");
 
 					while (childResults.next()) {
 
@@ -606,6 +606,7 @@ public class DatabaseDataStore extends DataStore {
 		} else {
 			id = claim.id;
 		}
+
 
 		try {
 			this.refreshDataConnection();
