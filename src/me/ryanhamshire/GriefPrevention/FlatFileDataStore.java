@@ -142,6 +142,18 @@ public class FlatFileDataStore extends DataStore {
 		try {
 			BufferedReader fr = new BufferedReader(new FileReader(SourceFile.getAbsolutePath()));
 			String firstline = fr.readLine();
+            try {
+                //if it is a UUID, than we need to advance forward to the next line, which will be the lesserBoundaryCorner.
+                UUID ud = UUID.fromString(firstline);
+                if(ud!=null) firstline = fr.readLine();
+            }
+            catch(Exception exx)
+            {
+                //expected- for older data, the first line won't be a UUID, but rather the lesser corner.
+
+            }
+
+
 			fr.close();
 			String[] splitresult = firstline.split(";");
 			return splitresult[0];
@@ -528,6 +540,7 @@ public class FlatFileDataStore extends DataStore {
 	}
 
 	void readClaim(File SourceFile) {
+        Debugger.Write("Reading claim from " + SourceFile.getPath(), Debugger.DebugLevel.Verbose);
 		// reads a single Claim.
 		// loads this claim from the given file.
 		if (SourceFile.getPath().startsWith("_"))
@@ -560,6 +573,22 @@ public class FlatFileDataStore extends DataStore {
                     subclaimtext=line.substring(4);
 					line = inStream.readLine(); // read to the next line.
 				}
+                //if line is a UUID- it's the UUID. otherwise, we assume it is an older format.
+                UUID grabUID = null;
+                try { grabUID = UUID.fromString(line);
+                    //if no exception occurs, than it was a UUID;
+                    //read the next line.
+                    if(grabUID!=null)
+                        line = inStream.readLine();
+                }
+                catch(Exception ex){
+                    Debugger.Write("Exception parsing UUID.", Debugger.DebugLevel.Verbose);
+
+
+                    grabUID=null;
+                }
+
+
 				// first line is lesser boundary corner location
 				String splitentry = line.split(";")[0];
 				// if the world doesn't exist yet, we need to create a
@@ -624,7 +653,7 @@ public class FlatFileDataStore extends DataStore {
 				if (topLevelClaim == null) {
 					// instantiate
 					topLevelClaim = new Claim(lesserBoundaryCorner, greaterBoundaryCorner, ownerName, builderNames, containerNames, accessorNames, managerNames, claimID, neverdelete);
-
+                    topLevelClaim.setUUID(grabUID);
 					// search for another claim overlapping this one
 
 					Claim conflictClaim = this.getClaimAt(topLevelClaim.lesserBoundaryCorner, true);
@@ -661,6 +690,7 @@ public class FlatFileDataStore extends DataStore {
 					// as such, try to read in the subclaim ID.
 
 					Claim subdivision = new Claim(lesserBoundaryCorner, greaterBoundaryCorner,topLevelClaim.getOwnerName() , builderNames, containerNames, accessorNames, managerNames, claimID, neverdelete);
+                    subdivision.setUUID(grabUID);
                     try {subdivision.id = Long.parseLong(subclaimtext);}
                     catch(NumberFormatException nfe){
                         subdivision.id=new Long(-1);
@@ -693,6 +723,9 @@ public class FlatFileDataStore extends DataStore {
 			if (inStream != null)
 				inStream.close();
 		} catch (IOException exception) {
+
+            Debugger.Write("Exception reading claim. ", Debugger.DebugLevel.Verbose);
+            Debugger.Write(exception, Debugger.DebugLevel.Verbose);
 		}
 
 	}
@@ -831,6 +864,7 @@ public class FlatFileDataStore extends DataStore {
 			}
 
 		}
+        Debugger.Write("Read in " + claimsread + " Claims for world:" + loaded.getName(), Debugger.DebugLevel.Verbose);
 		// System.out.println("Read in " + claimsread + " Claims for world:" +
 		// loaded.getName());
 
@@ -857,6 +891,10 @@ public class FlatFileDataStore extends DataStore {
 			outStream.newLine();
 
 		}
+        //UUID tweak: first line is our UUID.
+        outStream.write(claim.getUUID().toString());
+        outStream.newLine();
+
 		// first line is lesser boundary corner location
 		outStream.write(this.locationToString(claim.getLesserBoundaryCorner()));
 		outStream.newLine();

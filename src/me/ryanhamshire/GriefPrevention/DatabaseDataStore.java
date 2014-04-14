@@ -24,10 +24,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.Properties;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 import me.ryanhamshire.GriefPrevention.Debugger.DebugLevel;
@@ -289,7 +286,17 @@ public class DatabaseDataStore extends DataStore {
 				if (!tempresult.next()) {
 					statement.execute("ALTER TABLE griefprevention_claimdata ADD neverdelete BOOLEAN NOT NULL DEFAULT 0;");
 				}
-				
+
+                tempresult = statement.executeQuery("SHOW COLUMNS FROM griefprevention_claimdata LIKE 'uid'");
+                if(!tempresult.next()){
+                    statement.execute("ALTER TABLE griefprevention_claimdata ADD uid char(36) NOT NULL DEFAULT ''");
+                    statement.execute("CREATE INDEX griefprevention_claimuid ON griefprevention_claimdata (uid)");
+
+                }
+                tempresult = statement.executeQuery("SHOW COLUMNS FROM griefprevention_claimdata LIKE 'parentuid'");
+                if(!tempresult.next()){
+                    statement.execute("ALTER TABLE griefprevention_claimdata ADD parentuid char(36) NOT NULL DEFAULT ''");
+                }
 				
 			}
 		} catch (Exception e3) {
@@ -430,7 +437,15 @@ public class DatabaseDataStore extends DataStore {
 						continue;
 
 					long claimID = results.getLong("id");
+                    UUID uid = null;
+                    try {
+                        uid = UUID.fromString(results.getString("uid"));
 
+                    }
+                    catch(Exception exx){
+
+                    }
+                    if(uid==null) uid = UUID.randomUUID();
 					String lesserCornerString = results.getString("lessercorner");
 
 					String greaterCornerString = results.getString("greatercorner");
@@ -456,7 +471,8 @@ public class DatabaseDataStore extends DataStore {
 
 					
 					Claim topLevelClaim = new Claim(lesserBoundaryCorner, greaterBoundaryCorner, ownerName, builderNames, containerNames, accessorNames, managerNames, claimID, neverdelete);
-
+                    if(uid!=null)
+                        topLevelClaim.setUUID(uid);
 					// search for another claim overlapping this one
 					Claim conflictClaim = this.getClaimAt(topLevelClaim.lesserBoundaryCorner, true);
 
@@ -482,6 +498,17 @@ public class DatabaseDataStore extends DataStore {
 						lesserCornerString = childResults.getString("lessercorner");
 						lesserBoundaryCorner = this.locationFromString(lesserCornerString);
 						Long subid = childResults.getLong("id");
+
+                        UUID childuid = null;
+                        try {
+                            childuid = UUID.fromString(results.getString("uid"));
+
+                        }
+                        catch(Exception exx){
+
+                        }
+                        if(childuid==null) childuid = UUID.randomUUID();
+
 						greaterCornerString = childResults.getString("greatercorner");
 						greaterBoundaryCorner = this.locationFromString(greaterCornerString);
 
@@ -500,10 +527,11 @@ public class DatabaseDataStore extends DataStore {
 						neverdelete = results.getBoolean("neverdelete");
 
 						Claim childClaim = new Claim(lesserBoundaryCorner, greaterBoundaryCorner, ownerName, builderNames, containerNames, accessorNames, managerNames, subid, neverdelete);
-
+                        childClaim.setUUID(childuid);
 						// add this claim to the list of children of the current
 						// top level claim
 						childClaim.parent = topLevelClaim;
+
 						topLevelClaim.children.add(childClaim);
 
 						childClaim.inDataStore = true;
@@ -539,7 +567,7 @@ public class DatabaseDataStore extends DataStore {
 		ArrayList<String> containers = new ArrayList<String>();
 		ArrayList<String> accessors = new ArrayList<String>();
 		ArrayList<String> managers = new ArrayList<String>();
-
+        String uidString = claim.getUUID().toString();
 		claim.getPermissions(builders, containers, accessors, managers);
 
 		String buildersString = "";
@@ -564,10 +592,13 @@ public class DatabaseDataStore extends DataStore {
 
 		long parentId;
 		long id;
+        String parentuidString = null;
 		if (claim.parent == null) {
 			parentId = -1;
+            parentuidString = "";
 		} else {
 			parentId = claim.parent.id;
+            parentuidString = claim.parent.getUUID().toString();
 		}
 
 		if (claim.id == null) {
@@ -597,12 +628,20 @@ public class DatabaseDataStore extends DataStore {
 				// managers TEXT,
 				// parentid INTEGER,
 				// neverdelete BOOLEAN NOT NULL DEFAULT false);");
-				updatestatement.execute("UPDATE griefprevention_claimdata " + "SET id='" + id + "'" + ",owner='" + owner + "'" + ",lessercorner='" + lesserCornerString + "'" + ",greatercorner='" + greaterCornerString + "'" + ",builders='" + buildersString + "'" + ",containers='" + containersString + "'" + ",accessors='" + accessorsString + "'" + ",managers='" + managersString + "'" + ",parentid='" + parentId + "'" + ",neverdelete='" + (claim.neverdelete ? 1 : 0) + "' " + "WHERE id=" + id);
-				Debugger.Write("updated data into griefprevention_claimdata- ID:" + claim.getID(), DebugLevel.Verbose);
+				updatestatement.execute("UPDATE griefprevention_claimdata " + "SET id='" + id + "'" + ",uid='" + uidString + "'" + ",parentuid='" + parentuidString + "'" + ",owner='" + owner + "'" + ",lessercorner='" + lesserCornerString + "'" + ",greatercorner='" + greaterCornerString + "'" + ",builders='" + buildersString + "'" + ",containers='" + containersString + "'" + ",accessors='" + accessorsString + "'" + ",managers='" + managersString + "'" + ",parentid='" + parentId + "'" + ",neverdelete='" + (claim.neverdelete ? 1 : 0) + "' " + "WHERE id=" + id);
+				Debugger.Write("updated data into griefprevention_claimdata- ID:" + claim.getID() + " UUID:" + claim.getUUID().toString(), DebugLevel.Verbose);
 
 			} else {
 				Statement statement = databaseConnection.createStatement();
-				statement.execute("INSERT INTO griefprevention_claimdata VALUES(" + id + ", '" + owner + "', '" + lesserCornerString + "', '" + greaterCornerString + "', '" + buildersString + "', '" + containersString + "', '" + accessorsString + "', '" + managersString + "', " + parentId + ", " + claim.neverdelete + ");");
+                String usefmt = "INSERT INTO griefprevention_claimdata (id,uid,parentuid,owner,lessercorner,greatercorner,builders,containers,accessors,managers,parentid,neverdelete) VALUES ('%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s');";
+                statement.execute(String.format(usefmt,
+                        String.valueOf(id),
+                        uidString,parentuidString,
+                        owner,
+                        lesserCornerString,greaterCornerString,
+                        buildersString,containersString,accessorsString,managersString,String.valueOf(parentId),(claim.neverdelete ? 1 : 0)
+                        ));
+
 				Debugger.Write("Successfully inserted data into griefprevention_claimdata- ID:" + claim.getID(), DebugLevel.Verbose);
 			}
 		} catch (SQLException e) {
