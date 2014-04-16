@@ -44,6 +44,7 @@ public class YamlDataStore extends DataStore {
     private final static String PARENT_PATH = "Parent";
     private final static String NEVERDELETE_PATH = "NeverDelete";
     private final static String MODIFIED_PATH = "LastModified";
+    private final static String LEGACY_ID_PATH = "LegacyId";
 
     // Server constants
     private final static String NEXTCLAIMID_PATH = "NextClaimId";
@@ -306,7 +307,7 @@ public class YamlDataStore extends DataStore {
         for(String s : claimConfig.getKeys(false)) {
             ConfigurationSection claimReader = claimConfig.getConfigurationSection(s);
             if(claimReader.getString(GREATERBOUNDARY_PATH).split(";")[0].equals(worldLoad.getName()) && !claimReader.isString(PARENT_PATH)) {
-               Claim readClaim = getClaimFromStorage(Long.valueOf(s));
+               Claim readClaim = getClaimFromStorage(UUID.fromString(s));
                if(readClaim != null) {
                    readClaim.inDataStore = true;
                    addClaim(readClaim);
@@ -315,12 +316,12 @@ public class YamlDataStore extends DataStore {
         }
     }
 
-    Claim getClaimFromStorage(Long id) {
-        if(!claimConfig.isConfigurationSection(String.valueOf(id))) {
+    Claim getClaimFromStorage(UUID uniqueId) {
+        if(!claimConfig.isConfigurationSection(String.valueOf(uniqueId))) {
             return null;
         }
 
-        ConfigurationSection claimReader = claimConfig.getConfigurationSection(String.valueOf(id));
+        ConfigurationSection claimReader = claimConfig.getConfigurationSection(String.valueOf(uniqueId));
         Claim topLevelClaim;
         try {
             Location lesserBoundaryCorner = this.locationFromString(claimReader.getString(LESSERBOUNDARY_PATH));
@@ -332,6 +333,7 @@ public class YamlDataStore extends DataStore {
             List<String> containers = (claimReader.getStringList(CONTAINER_PATH));
             List<String> accessors = (claimReader.getStringList(ACCESSOR_PATH));
             List<String> managers = (claimReader.getStringList(MANAGER_PATH));
+            Long id = (claimReader.getLong(LEGACY_ID_PATH));
 
             topLevelClaim = new Claim(lesserBoundaryCorner, greaterBoundaryCorner, ownerName,
                     builders.toArray(new String[builders.size()]), containers.toArray(new String[containers.size()]),
@@ -339,10 +341,11 @@ public class YamlDataStore extends DataStore {
                     id, neverDelete);
 
             topLevelClaim.modifiedDate = new Date(claimReader.getLong(MODIFIED_PATH));
+            topLevelClaim.setUUID(uniqueId);
 
             if(claimReader.isList(CHILDREN_PATH)) {
-                for (long subclaimId : claimReader.getLongList(CHILDREN_PATH)) {
-                    Claim child = getClaimFromStorage(subclaimId); // Yay recursion!
+                for (String subclaimId : claimReader.getStringList(CHILDREN_PATH)) {
+                    Claim child = getClaimFromStorage(UUID.fromString(subclaimId)); // Yay recursion!
                     if(child != null) {
                         child.parent = topLevelClaim;
                         topLevelClaim.children.add(child);
@@ -353,7 +356,7 @@ public class YamlDataStore extends DataStore {
 
 
         } catch (Exception ex) {
-            GriefPrevention.AddLogEntry("Unable to load data for claim \"" + id + "\": " + ex.getClass().getName() + "-" + ex.getMessage());
+            GriefPrevention.AddLogEntry("Unable to load data for claim \"" + uniqueId + "\": " + ex.getClass().getName() + "-" + ex.getMessage());
             ex.printStackTrace();
             return null;
         }
@@ -362,23 +365,24 @@ public class YamlDataStore extends DataStore {
 
     @Override
     void writeClaimToStorage(Claim claim) {
-        if(claim.id < 0) claim.id = getNextClaimID();
-        String claimID = String.valueOf(claim.id);
 
         ConfigurationSection claimWriter;
-        if(claimConfig.isConfigurationSection(claimID)) {
-            claimWriter = claimConfig.getConfigurationSection(claimID);
+        if(claimConfig.isConfigurationSection(claim.getUUID().toString())) {
+            claimWriter = claimConfig.getConfigurationSection(claim.getUUID().toString());
         } else {
-            claimWriter = claimConfig.createSection(claimID);
+            claimWriter = claimConfig.createSection(claim.getUUID().toString());
         }
 
+        if(claim.id < 0) claim.id = getNextClaimID();
+
         // Write claim information
+        claimWriter.set(LEGACY_ID_PATH, claim.id);
         claimWriter.set(LESSERBOUNDARY_PATH, this.locationToString(claim.getLesserBoundaryCorner()));
         claimWriter.set(GREATERBOUNDARY_PATH, this.locationToString(claim.getGreaterBoundaryCorner()));
         claimWriter.set(OWNER_PATH, claim.getOwnerName());
         claimWriter.set(NEVERDELETE_PATH, claim.neverdelete);
         if(claim.parent != null) {
-            claimWriter.set(PARENT_PATH, claim.parent.getID());
+            claimWriter.set(PARENT_PATH, claim.parent.getUUID());
         }
 
         // Write the trusted players
@@ -403,9 +407,9 @@ public class YamlDataStore extends DataStore {
         // It's ok to do this for any claim type,
         // If it's a subdivision, it will be an empty list
         // Recursion for the win!
-        List<Long> children = new ArrayList<Long>();
+        List<String> children = new ArrayList<String>();
         for(Claim child : claim.children) {
-            children.add(child.getID());
+            children.add(child.getUUID().toString());
             writeClaimToStorage(child);
         }
         if(!children.isEmpty()) {
@@ -416,7 +420,7 @@ public class YamlDataStore extends DataStore {
     // Deletes a claim from the datastore
     @Override
     void deleteClaimFromSecondaryStorage(Claim claim) {
-        claimConfig.set(claim.getID().toString(), null);
+        claimConfig.set(claim.getUUID().toString(), null);
     }
 
     @Override
