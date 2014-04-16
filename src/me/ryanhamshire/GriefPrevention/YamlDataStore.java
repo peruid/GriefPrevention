@@ -382,7 +382,7 @@ public class YamlDataStore extends DataStore {
         claimWriter.set(OWNER_PATH, claim.getOwnerName());
         claimWriter.set(NEVERDELETE_PATH, claim.neverdelete);
         if(claim.parent != null) {
-            claimWriter.set(PARENT_PATH, claim.parent.getUUID());
+            claimWriter.set(PARENT_PATH, claim.parent.getUUID().toString());
         }
 
         // Write the trusted players
