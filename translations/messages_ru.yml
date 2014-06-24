@@ -400,9 +400,9 @@ Messages:
   SiegeNoTeleport:
     Text: You can't teleport out of a besieged area.
   SiegeOnCooldown:
-    Text: You're still on siege cooldown for this defender or claim.  Find another victim.
+    Text: Напасть на это владение игрока пока невозможно.  Найдите кого-нибудь еще.
   SiegeTooFarAway:
-    Text: You're too far away to siege.
+    Text: Вы далеко для осады
   SiegeWinDoorsOpen:
     Text: Congratulations!  Buttons and levers are temporarily unlocked (five minutes).
   SubdivisionDemo:
@@ -420,7 +420,7 @@ Messages:
     Text: All claims abandoned including locked claims.  You now have {0} available claim blocks.
     Notes: '0: remaining blocks'
   SurvivalBasicsDemoAdvertisement:
-    Text: 'Land Claim Help:  http://youtu.be/VDsjXB-BaE0'
+    Text: 'Видеогид:  http://youtu.be/VDsjXB-BaE0'
   TamedDeathDefend:
     Text: A {0} has been killed in defense of your Claim!
     Notes: 0:Type of tamed animal;1:Attacker
