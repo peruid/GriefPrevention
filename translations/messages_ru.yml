@@ -17,7 +17,7 @@ Messages:
   AccessPermission:
     Text: использовать кнопки и переключатели
   AdjustBlocksSuccess:
-    Text: Успешно! Бонусные блоки игрока {0} увеличены на {1}. Новых бонусных блоков: {2}.'
+    Text: Успешно! Бонусные блоки игрока {0} увеличены на {1}. Новых бонусных блоков {2}.'
     Notes: '0: player; 1: adjustment; 2: new total'
   AdjustGroupBlocksSuccess:
     Text: 'Adjusted bonus claim blocks for players with the {0} permission by {1}.  New
