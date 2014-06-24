@@ -2,14 +2,14 @@ Messages:
   AbandonClaimAdvertisement:
     Text: Удалить владение и высвободить блоки, используйте /AbandonClaim.
   AbandonClaimMissing:
-    Text: Стойте во владении, которое удаляете, или используйте /AbandonAllClaims.
+    Text: Стойте внутри владения, которое удаляете, или используйте /AbandonAllClaims.
   AbandonClaimRestoreWarning:
     Text: Отказ от владения восстановит природу, если вы уверены, введите /abandonclaim еще раз.
   AbandonCost:
     Text: вы потеряли {0} блоков владений за отказ от этой собственности.
     Notes: 0:Number of claim blocks lost
   AbandonCostWarning:
-    Text: You will lose {0} Claim blocks if you abandon this claim. enter /abandonclaim again to confirm.
+    Text: За отказ от этого владения вы потеряете {0} блоков. Введите /abandonclaim еще раз, чтобы подтвердить.
     Notes: 0:Number of claim blocks that will be lost
   AbandonSuccess:
     Text: Владение заброшено. У вас {0} доступно блоков владений.
@@ -17,16 +17,16 @@ Messages:
   AccessPermission:
     Text: использовать кнопки и переключатели
   AdjustBlocksSuccess:
-    Text: 'Adjusted {0}''s bonus claim blocks by {1}.  New total bonus blocks: {2}.'
+    Text: Успешно! Бонусные блоки игрока {0} увеличены на {1}. Новых бонусных блоков: {2}.'
     Notes: '0: player; 1: adjustment; 2: new total'
   AdjustGroupBlocksSuccess:
     Text: 'Adjusted bonus claim blocks for players with the {0} permission by {1}.  New
       total: {2}.'
     Notes: '0: permission; 1: adjustment amount; 2: new total bonus'
   AdminClaimsMode:
-    Text: Administrative claims mode active.  Any claims created will be free and editable by other administrators.
+    Text: Режим административных владений. Все владения в этом режиме будут доступны для редактирования другим администраторам.
   AllAdminDeleted:
-    Text: Deleted all administrative claims.
+    Text: Удалены все административные владения.
   AlreadySieging:
     Text: You're already involved in a siege.
   AlreadyUnderSiegeArea:
@@ -47,7 +47,7 @@ Messages:
   BasicClaimsMode:
     Text: Обычный режим управления владением.
   BesiegedNoTeleport:
-    Text: You can't teleport into a besieged area.
+    Text: Вы не можете телепортироваться во владение под осадой
   BlockClaimed:
     Text: Этот блок принадлежит {0}.
     Notes: '0: claim owner'
